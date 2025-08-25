@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"strings"
 	"testing"
 	"time"
 )
@@ -73,10 +72,22 @@ func (s *testServer) start(ctx context.Context) {
 				}
 				s.received = append(s.received, msg)
 
-				// Send response
-				if _, err := conn.Write([]byte(s.messages[i])); err != nil {
-					s.errors <- fmt.Errorf("failed to write response: %w", err)
-					return
+				// If message is "HANG", simulate a hang by sleeping indefinitely
+				if s.messages[i] == "HANG" {
+					select {
+					case <-ctx.Done():
+						s.errors <- ctx.Err()
+						return
+					case <-time.After(24 * time.Hour): // effectively forever
+						// This will never execute due to context cancellation
+					}
+				}
+				// Send response for non-HANG messages
+				if s.messages[i] != "HANG" {
+					if _, err := conn.Write([]byte(s.messages[i])); err != nil {
+						s.errors <- fmt.Errorf("failed to write response: %w", err)
+						return
+					}
 				}
 			}
 		}
@@ -283,8 +294,11 @@ func TestDirectTLSPorts(t *testing.T) {
 }
 
 func TestTimeout(t *testing.T) {
-	// Create a server that never responds
-	server, err := newTestServer("25", []string{"220 test.test.test server\r\n"})
+	// Create a server that responds to greeting but hangs on EHLO
+	server, err := newTestServer("25", []string{
+		"220 test.test.test server\r\n",
+		"HANG", // Special message that causes server to hang
+	})
 	if err != nil {
 		t.Fatalf("Failed to create test server: %v", err)
 	}
@@ -297,21 +311,27 @@ func TestTimeout(t *testing.T) {
 	ctx := context.Background()
 	server.start(ctx)
 
-	// Connect with very short timeout
-	ctx, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
-	defer cancel()
-
+	// Create a connection with no timeout
 	conn, err := net.Dial("tcp", server.addr())
 	if err != nil {
 		t.Fatalf("Failed to connect to test server: %v", err)
 	}
 	defer conn.Close()
 
+	// Set a short timeout for the STARTTLS operation
+	ctx, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
+	defer cancel()
+
+	// The server will acknowledge the connection but hang on EHLO,
+	// which should trigger the context timeout
 	err = StartTLS(ctx, conn, "25")
 	if err == nil {
 		t.Error("Expected timeout error but got none")
+		return
 	}
-	if !strings.Contains(err.Error(), "context deadline exceeded") {
-		t.Errorf("Expected context deadline error, got: %v", err)
+
+	// The error should be a context deadline exceeded error
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("Expected context deadline exceeded error, got: %v", err)
 	}
 }
