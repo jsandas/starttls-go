@@ -78,9 +78,6 @@ jobs:
     name: Run Tests
     runs-on: ubuntu-latest
     needs: [lint]
-    strategy:
-      matrix:
-        platform: [ubuntu-latest, macos-latest, windows-latest]
     
     steps:
     - name: Checkout code
