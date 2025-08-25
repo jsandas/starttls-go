@@ -19,15 +19,30 @@ type testServer struct {
 	errors   chan error
 }
 
+// portMap maps protocol ports to high-numbered ports for testing
+var portMap = map[string]string{
+	"21":   "10021", // FTP
+	"25":   "10025", // SMTP
+	"110":  "10110", // POP3
+	"143":  "10143", // IMAP
+	"3306": "13306", // MySQL
+}
+
 func newTestServer(port string, messages []string) (*testServer, error) {
-	listener, err := net.Listen("tcp", ":"+port)
+	// Use high-numbered port for testing
+	testPort := portMap[port]
+	if testPort == "" {
+		testPort = port // Use original port if no mapping exists
+	}
+
+	listener, err := net.Listen("tcp", ":"+testPort)
 	if err != nil {
 		return nil, fmt.Errorf("failed to start test server: %w", err)
 	}
 
 	return &testServer{
 		listener: listener,
-		port:     port,
+		port:     port, // Keep original port for protocol identification
 		messages: messages,
 		errors:   make(chan error, 1),
 	}, nil
