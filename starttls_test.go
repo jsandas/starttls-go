@@ -55,18 +55,29 @@ func (s *testServer) start(ctx context.Context) {
 
 		// Read client messages and respond
 		for i := 1; i < len(s.messages); i++ {
-			// Read client message
-			msg, err := reader.ReadString('\n')
-			if err != nil && !errors.Is(err, io.EOF) {
-				s.errors <- fmt.Errorf("failed to read client message: %w", err)
-				return
-			}
-			s.received = append(s.received, msg)
+			// For MySQL, just read the SSL request packet and don't respond
+			if s.port == "3306" {
+				buf := make([]byte, 36) // Size of MySQL SSL request packet
+				if _, err := io.ReadFull(reader, buf); err != nil && !errors.Is(err, io.EOF) {
+					s.errors <- fmt.Errorf("failed to read MySQL SSL request: %w", err)
+					return
+				}
+				s.received = append(s.received, string(buf))
+				break // MySQL doesn't expect a response after SSL request
+			} else {
+				// For text protocols, read until newline
+				msg, err := reader.ReadString('\n')
+				if err != nil && !errors.Is(err, io.EOF) {
+					s.errors <- fmt.Errorf("failed to read client message: %w", err)
+					return
+				}
+				s.received = append(s.received, msg)
 
-			// Send response
-			if _, err := conn.Write([]byte(s.messages[i])); err != nil {
-				s.errors <- fmt.Errorf("failed to write response: %w", err)
-				return
+				// Send response
+				if _, err := conn.Write([]byte(s.messages[i])); err != nil {
+					s.errors <- fmt.Errorf("failed to write response: %w", err)
+					return
+				}
 			}
 		}
 
@@ -153,18 +164,20 @@ func TestStartTLS(t *testing.T) {
 			port: "3306",
 			serverMessages: []string{
 				string([]byte{
-					0x4a, 0x00, 0x00, 0x00, // Packet length (74 bytes) and sequence
+					0x31, 0x00, 0x00, 0x00, // Packet length (49 bytes) and sequence number 0
 					0x0a,                          // Protocol version (10)
-					'5', '.', '7', '.', '0', 0x00, // Server version
+					'5', '.', '7', '.', '0', 0x00, // Server version (null terminated)
 					0x01, 0x02, 0x03, 0x04, // Thread ID
-					'1', '2', '3', '4', '5', '6', '7', '8', 0x00, // Auth plugin data
+					'1', '2', '3', '4', '5', '6', '7', '8', // Salt part 1
+					0x00,       // null terminator
 					0x00,       // Filler
-					0x08, 0x82, // Capability flags lower (includes SERVER_SSL 0x800)
+					0x00, 0x08, // Capability flags lower (includes SERVER_SSL 0x800)
 					0x21,       // Character set
 					0x02, 0x00, // Status flags
 					0x00, 0x00, // Capability flags upper
-					0x00,                                                       // Auth plugin data length
+					0x08,                                                       // Auth plugin data length (just first part)
 					0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // Reserved
+					'm', 'y', 's', 'q', 'l', '_', 'n', 'a', 't', 'i', 'v', 'e', '_', 'p', 'a', 's', 's', 'w', 'o', 'r', 'd', 0x00, // auth plugin name
 				}),
 			},
 			timeout: 2 * time.Second,
@@ -174,18 +187,20 @@ func TestStartTLS(t *testing.T) {
 			port: "3306",
 			serverMessages: []string{
 				string([]byte{
-					0x4a, 0x00, 0x00, 0x00, // Packet length (74 bytes) and sequence
+					0x31, 0x00, 0x00, 0x00, // Packet length (49 bytes) and sequence number 0
 					0x0a,                          // Protocol version (10)
-					'5', '.', '7', '.', '0', 0x00, // Server version
+					'5', '.', '7', '.', '0', 0x00, // Server version (null terminated)
 					0x01, 0x02, 0x03, 0x04, // Thread ID
-					'1', '2', '3', '4', '5', '6', '7', '8', 0x00, // Auth plugin data
+					'1', '2', '3', '4', '5', '6', '7', '8', // Salt part 1
+					0x00,       // null terminator
 					0x00,       // Filler
-					0x00, 0x82, // Capability flags lower (no SERVER_SSL flag)
+					0x00, 0x00, // Capability flags lower (no SERVER_SSL flag)
 					0x21,       // Character set
 					0x02, 0x00, // Status flags
 					0x00, 0x00, // Capability flags upper
-					0x00,                                                       // Auth plugin data length
+					0x08,                                                       // Auth plugin data length (just first part)
 					0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // Reserved
+					'm', 'y', 's', 'q', 'l', '_', 'n', 'a', 't', 'i', 'v', 'e', '_', 'p', 'a', 's', 's', 'w', 'o', 'r', 'd', 0x00, // auth plugin name
 				}),
 			},
 			expectError:   true,
