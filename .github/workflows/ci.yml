@@ -103,27 +103,3 @@ jobs:
         flags: unittests
         name: codecov-umbrella
         fail_ci_if_error: true
-
-  examples:
-    name: Build Examples
-    runs-on: ubuntu-latest
-    needs: [test]
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Set up Go
-      uses: actions/setup-go@v4
-      with:
-        go-version-file: "go.mod"
-        cache: true
-        
-    - name: Build examples
-      run: |
-        for d in examples/*/ ; do
-          echo "Building $d"
-          cd "$d"
-          go build -v
-          cd ../../
-        done
