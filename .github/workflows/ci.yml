@@ -3,13 +3,18 @@ name: CI
 on:
   pull_request:
     branches: [ main ]
+    paths:
+      - '**.go'
+      - '**.mod'
+      - '**.sum'
+      - '.github/workflows/ci.yml'
   push:
     branches: [ main ]
-  paths:
-    - '**.go'
-    - '**.mod'
-    - '**.sum'
-    - '.github/workflows/ci.yml'
+    paths:
+      - '**.go'
+      - '**.mod'
+      - '**.sum'
+      - '.github/workflows/ci.yml'
 
 jobs:
   lint:
