@@ -5,6 +5,11 @@ on:
     branches: [ main ]
   push:
     branches: [ main ]
+  paths:
+    - '**.go'
+    - '**.mod'
+    - '**.sum'
+    - '.github/workflows/ci.yml'
 
 jobs:
   lint:
