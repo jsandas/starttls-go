@@ -1,4 +1,4 @@
-package main
+package starttls
 
 import (
 	"bufio"
