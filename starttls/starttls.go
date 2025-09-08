@@ -218,6 +218,7 @@ func (p *mysqlProtocol) Handshake(ctx context.Context, rw *bufio.ReadWriter) err
 	for pos < len(body) && body[pos] != 0 {
 		pos++
 	}
+
 	pos++ // skip null terminator
 
 	// Skip thread ID (4 bytes)
@@ -228,6 +229,7 @@ func (p *mysqlProtocol) Handshake(ctx context.Context, rw *bufio.ReadWriter) err
 	for pos < len(body) && body[pos] != 0 {
 		pos++
 	}
+
 	pos++
 
 	// Skip filler (1 byte)
@@ -237,6 +239,7 @@ func (p *mysqlProtocol) Handshake(ctx context.Context, rw *bufio.ReadWriter) err
 	if pos+2 > len(body) {
 		return fmt.Errorf("mysql: packet too short for capability flags")
 	}
+
 	capabilities := uint32(body[pos]) | uint32(body[pos+1])<<8
 
 	// Check if server supports SSL
@@ -250,6 +253,7 @@ func (p *mysqlProtocol) Handshake(ctx context.Context, rw *bufio.ReadWriter) err
 		CLIENT_PROTOCOL_41       = 0x00000200
 		CLIENT_SECURE_CONNECTION = 0x00008000
 	)
+
 	clientFlags := uint32(CLIENT_SSL | CLIENT_PROTOCOL_41 | CLIENT_SECURE_CONNECTION)
 
 	sslRequest := make([]byte, 4+32) // Header + SSL request packet
@@ -339,6 +343,7 @@ func readLine(ctx context.Context, r *bufio.Reader) (string, error) {
 			errCh <- err
 			return
 		}
+
 		lineCh <- line
 	}()
 

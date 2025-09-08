@@ -76,7 +76,9 @@ func (s *testServer) start(ctx context.Context) {
 					s.errors <- fmt.Errorf("failed to read MySQL SSL request: %w", err)
 					return
 				}
+
 				s.received = append(s.received, string(buf))
+
 				break // MySQL doesn't expect a response after SSL request
 			} else {
 				// For text protocols, read until newline
@@ -85,6 +87,7 @@ func (s *testServer) start(ctx context.Context) {
 					s.errors <- fmt.Errorf("failed to read client message: %w", err)
 					return
 				}
+
 				s.received = append(s.received, msg)
 
 				// If message is "HANG", simulate a hang by sleeping indefinitely
@@ -242,6 +245,7 @@ func TestStartTLS(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Failed to create test server: %v", err)
 			}
+
 			defer func() {
 				if err := server.stop(); err != nil {
 					t.Errorf("Failed to stop test server: %v", err)
@@ -251,6 +255,7 @@ func TestStartTLS(t *testing.T) {
 			// Start server
 			ctx, cancel := context.WithTimeout(context.Background(), tt.timeout)
 			defer cancel()
+
 			server.start(ctx)
 
 			// Connect client
@@ -269,9 +274,11 @@ func TestStartTLS(t *testing.T) {
 					t.Error("Expected error but got none")
 					return
 				}
+
 				if !errors.Is(err, tt.expectedError) {
 					t.Errorf("Expected error %v but got %v", tt.expectedError, err)
 				}
+
 				return
 			}
 
@@ -300,6 +307,7 @@ func TestDirectTLSPorts(t *testing.T) {
 	for _, port := range directTLSPorts {
 		t.Run(fmt.Sprintf("port_%s", port), func(t *testing.T) {
 			ctx := context.Background()
+
 			err := StartTLS(ctx, nil, port)
 			if err != nil {
 				t.Errorf("Expected nil error for direct TLS port %s, got: %v", port, err)
@@ -317,6 +325,7 @@ func TestTimeout(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create test server: %v", err)
 	}
+
 	defer func() {
 		if err := server.stop(); err != nil {
 			t.Errorf("Failed to stop test server: %v", err)
