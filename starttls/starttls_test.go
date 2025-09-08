@@ -61,7 +61,8 @@ func (s *testServer) start(ctx context.Context) {
 
 		// Send greeting
 		if len(s.messages) > 0 {
-			if _, err := conn.Write([]byte(s.messages[0])); err != nil {
+			_, err := conn.Write([]byte(s.messages[0]))
+			if err != nil {
 				s.errors <- fmt.Errorf("failed to write greeting: %w", err)
 				return
 			}
@@ -72,7 +73,9 @@ func (s *testServer) start(ctx context.Context) {
 			// For MySQL, just read the SSL request packet and don't respond
 			if s.port == "3306" {
 				buf := make([]byte, 36) // Size of MySQL SSL request packet
-				if _, err := io.ReadFull(reader, buf); err != nil && !errors.Is(err, io.EOF) {
+
+				_, err := io.ReadFull(reader, buf)
+				if err != nil && !errors.Is(err, io.EOF) {
 					s.errors <- fmt.Errorf("failed to read MySQL SSL request: %w", err)
 					return
 				}
@@ -102,7 +105,8 @@ func (s *testServer) start(ctx context.Context) {
 				}
 				// Send response for non-HANG messages
 				if s.messages[i] != "HANG" {
-					if _, err := conn.Write([]byte(s.messages[i])); err != nil {
+					_, err := conn.Write([]byte(s.messages[i]))
+					if err != nil {
 						s.errors <- fmt.Errorf("failed to write response: %w", err)
 						return
 					}
@@ -247,7 +251,8 @@ func TestStartTLS(t *testing.T) {
 			}
 
 			defer func() {
-				if err := server.stop(); err != nil {
+				err := server.stop()
+				if err != nil {
 					t.Errorf("Failed to stop test server: %v", err)
 				}
 			}()
@@ -327,7 +332,8 @@ func TestTimeout(t *testing.T) {
 	}
 
 	defer func() {
-		if err := server.stop(); err != nil {
+		err := server.stop()
+		if err != nil {
 			t.Errorf("Failed to stop test server: %v", err)
 		}
 	}()

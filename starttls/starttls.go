@@ -78,10 +78,13 @@ func (p *smtpProtocol) Name() string {
 }
 
 func (p *smtpProtocol) sendEHLO(ctx context.Context, rw *bufio.ReadWriter) error {
-	if _, err := rw.WriteString("EHLO tlstools.com\r\n"); err != nil {
+	_, err := rw.WriteString("EHLO tlstools.com\r\n")
+	if err != nil {
 		return err
 	}
-	if err := rw.Flush(); err != nil {
+
+	err = rw.Flush()
+	if err != nil {
 		return err
 	}
 
@@ -115,11 +118,13 @@ func newIMAPProtocol() *imapProtocol {
 }
 
 func (p *imapProtocol) Handshake(ctx context.Context, rw *bufio.ReadWriter) error {
-	if err := expectGreeting(ctx, rw, p.greetMsg); err != nil {
+	err := expectGreeting(ctx, rw, p.greetMsg)
+	if err != nil {
 		return fmt.Errorf("imap: greeting failed: %w", err)
 	}
 
-	if err := sendStartTLS(ctx, rw, p.authMsg, p.respMsg); err != nil {
+	err = sendStartTLS(ctx, rw, p.authMsg, p.respMsg)
+	if err != nil {
 		return fmt.Errorf("imap: STARTTLS failed: %w", err)
 	}
 
@@ -142,11 +147,13 @@ func newPOP3Protocol() *pop3Protocol {
 }
 
 func (p *pop3Protocol) Handshake(ctx context.Context, rw *bufio.ReadWriter) error {
-	if err := expectGreeting(ctx, rw, p.greetMsg); err != nil {
+	err := expectGreeting(ctx, rw, p.greetMsg)
+	if err != nil {
 		return fmt.Errorf("pop3: greeting failed: %w", err)
 	}
 
-	if err := sendStartTLS(ctx, rw, p.authMsg, p.respMsg); err != nil {
+	err = sendStartTLS(ctx, rw, p.authMsg, p.respMsg)
+	if err != nil {
 		return fmt.Errorf("pop3: STARTTLS failed: %w", err)
 	}
 
@@ -169,11 +176,13 @@ func newFTPProtocol() *ftpProtocol {
 }
 
 func (p *ftpProtocol) Handshake(ctx context.Context, rw *bufio.ReadWriter) error {
-	if err := expectGreeting(ctx, rw, p.greetMsg); err != nil {
+	err := expectGreeting(ctx, rw, p.greetMsg)
+	if err != nil {
 		return fmt.Errorf("ftp: greeting failed: %w", err)
 	}
 
-	if err := sendStartTLS(ctx, rw, p.authMsg, p.respMsg); err != nil {
+	err = sendStartTLS(ctx, rw, p.authMsg, p.respMsg)
+	if err != nil {
 		return fmt.Errorf("ftp: AUTH TLS failed: %w", err)
 	}
 
@@ -198,7 +207,9 @@ func newMySQLProtocol() *mysqlProtocol {
 func (p *mysqlProtocol) Handshake(ctx context.Context, rw *bufio.ReadWriter) error {
 	// Read initial handshake packet header
 	header := make([]byte, 4)
-	if _, err := io.ReadFull(rw.Reader, header); err != nil {
+
+	_, err := io.ReadFull(rw.Reader, header)
+	if err != nil {
 		return fmt.Errorf("mysql: failed to read packet header: %w", err)
 	}
 
@@ -207,7 +218,9 @@ func (p *mysqlProtocol) Handshake(ctx context.Context, rw *bufio.ReadWriter) err
 
 	// Read the packet body
 	body := make([]byte, length)
-	if _, err := io.ReadFull(rw.Reader, body); err != nil {
+
+	_, err = io.ReadFull(rw.Reader, body)
+	if err != nil {
 		return fmt.Errorf("mysql: failed to read packet body: %w", err)
 	}
 
@@ -287,10 +300,13 @@ func (p *mysqlProtocol) Handshake(ctx context.Context, rw *bufio.ReadWriter) err
 		sslRequest[i] = 0
 	}
 
-	if _, err := rw.Write(sslRequest); err != nil {
+	_, err = rw.Write(sslRequest)
+	if err != nil {
 		return fmt.Errorf("mysql: failed to write SSL request: %w", err)
 	}
-	if err := rw.Flush(); err != nil {
+
+	err = rw.Flush()
+	if err != nil {
 		return fmt.Errorf("mysql: failed to flush SSL request: %w", err)
 	}
 
@@ -316,10 +332,13 @@ func expectGreeting(ctx context.Context, rw *bufio.ReadWriter, pattern *regexp.R
 }
 
 func sendStartTLS(ctx context.Context, rw *bufio.ReadWriter, authMsg string, respPattern *regexp.Regexp) error {
-	if _, err := rw.WriteString(authMsg); err != nil {
+	_, err := rw.WriteString(authMsg)
+	if err != nil {
 		return err
 	}
-	if err := rw.Flush(); err != nil {
+
+	err = rw.Flush()
+	if err != nil {
 		return err
 	}
 
