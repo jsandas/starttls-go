@@ -55,15 +55,18 @@ func newSMTPProtocol() *smtpProtocol {
 }
 
 func (p *smtpProtocol) Handshake(ctx context.Context, rw *bufio.ReadWriter) error {
-	if err := expectGreeting(ctx, rw, p.greetMsg); err != nil {
+	err := expectGreeting(ctx, rw, p.greetMsg)
+	if err != nil {
 		return fmt.Errorf("smtp: greeting failed: %w", err)
 	}
 
-	if err := p.sendEHLO(ctx, rw); err != nil {
+	err = p.sendEHLO(ctx, rw)
+	if err != nil {
 		return fmt.Errorf("smtp: EHLO failed: %w", err)
 	}
 
-	if err := sendStartTLS(ctx, rw, p.authMsg, p.respMsg); err != nil {
+	err = sendStartTLS(ctx, rw, p.authMsg, p.respMsg)
+	if err != nil {
 		return fmt.Errorf("smtp: STARTTLS failed: %w", err)
 	}
 
