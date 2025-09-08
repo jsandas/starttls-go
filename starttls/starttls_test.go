@@ -19,7 +19,7 @@ type testServer struct {
 	errors   chan error
 }
 
-// portMap maps protocol ports to high-numbered ports for testing
+// portMap maps protocol ports to high-numbered ports for testing.
 var portMap = map[string]string{
 	"21":   "10021", // FTP
 	"25":   "10025", // SMTP
