@@ -1,0 +1,60 @@
+version: "2"
+linters:
+  default: none
+  enable:
+    - asciicheck
+    - contextcheck
+    - dupl
+    - embeddedstructfieldcheck
+    - errcheck
+    - funcorder
+    - goconst
+    - gocritic
+    - gocyclo
+    - godot
+    - goheader
+    - goprintffuncname
+    - gosec
+    - govet
+    - ineffassign
+    - lll
+    - misspell
+    - nakedret
+    - noctx
+    - noinlineerr
+    - nolintlint
+    - rowserrcheck
+    - staticcheck
+    - unconvert
+    - unparam
+    - unused
+    - whitespace
+    - wsl_v5
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+    rules:
+      # Exclude some linters from running on tests files.
+      - path: _test\.go
+        linters:
+          - gocyclo
+          - errcheck
+          - dupl
+          - gosec
+  settings:
+    dupl:
+      threshold: 100
+    gocyclo:
+      min-complexity: 10
+    gosec:
+      excludes:
+        - G404 # Use of weak random number generator (math/rand instead of crypto/rand)
+        - G402 # Use of weak cryptographic primitives

@@ -8,6 +8,7 @@ on:
       - '**.mod'
       - '**.sum'
       - '.github/workflows/ci.yml'
+      - ".golangci.yml"
   push:
     branches: [ main ]
     paths:
@@ -15,47 +16,13 @@ on:
       - '**.mod'
       - '**.sum'
       - '.github/workflows/ci.yml'
+      - ".golangci.yml"
 
 jobs:
   lint:
-    name: Lint and Format Check
-    runs-on: ubuntu-latest
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Set up Go
-      uses: actions/setup-go@v4
-      with:
-        go-version-file: "go.mod"
-        cache: true
-        
-    - name: Install golangci-lint
-      uses: golangci/golangci-lint-action@v4
-      with:
-        version: latest
-        
-    - name: Run golangci-lint
-      run: |
-        golangci-lint run --timeout=5m
-        
-    - name: Check gofmt
-      run: |
-        if [ "$(gofmt -s -l . | wc -l)" -gt 0 ]; then
-          echo "Code is not formatted. Please run 'gofmt -s -w .'"
-          gofmt -s -l .
-          exit 1
-        fi
-        
-    - name: Check go mod tidy
-      run: |
-        go mod tidy
-        if [ -n "$(git status --porcelain)" ]; then
-          echo "go.mod or go.sum is not tidy. Please run 'go mod tidy'"
-          git diff
-          exit 1
-        fi
+    permissions:
+      contents: read
+    uses: jsandas/github-actions/.github/workflows/golang-lint.yml@main
 
   security:
     name: Security Scan
