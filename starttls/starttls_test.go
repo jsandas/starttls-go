@@ -19,7 +19,7 @@ type testServer struct {
 	errors   chan error
 }
 
-// portMap maps protocol ports to high-numbered ports for testing
+// portMap maps protocol ports to high-numbered ports for testing.
 var portMap = map[string]string{
 	"21":   "10021", // FTP
 	"25":   "10025", // SMTP
@@ -28,14 +28,16 @@ var portMap = map[string]string{
 	"3306": "13306", // MySQL
 }
 
-func newTestServer(port string, messages []string) (*testServer, error) {
+func newTestServer(ctx context.Context, port string, messages []string) (*testServer, error) {
 	// Use high-numbered port for testing
 	testPort := portMap[port]
 	if testPort == "" {
 		testPort = port // Use original port if no mapping exists
 	}
 
-	listener, err := net.Listen("tcp", ":"+testPort)
+	lc := net.ListenConfig{}
+
+	listener, err := lc.Listen(ctx, "tcp", ":"+testPort)
 	if err != nil {
 		return nil, fmt.Errorf("failed to start test server: %w", err)
 	}
@@ -61,7 +63,8 @@ func (s *testServer) start(ctx context.Context) {
 
 		// Send greeting
 		if len(s.messages) > 0 {
-			if _, err := conn.Write([]byte(s.messages[0])); err != nil {
+			_, err := conn.Write([]byte(s.messages[0]))
+			if err != nil {
 				s.errors <- fmt.Errorf("failed to write greeting: %w", err)
 				return
 			}
@@ -72,11 +75,15 @@ func (s *testServer) start(ctx context.Context) {
 			// For MySQL, just read the SSL request packet and don't respond
 			if s.port == "3306" {
 				buf := make([]byte, 36) // Size of MySQL SSL request packet
-				if _, err := io.ReadFull(reader, buf); err != nil && !errors.Is(err, io.EOF) {
+
+				_, err := io.ReadFull(reader, buf)
+				if err != nil && !errors.Is(err, io.EOF) {
 					s.errors <- fmt.Errorf("failed to read MySQL SSL request: %w", err)
 					return
 				}
+
 				s.received = append(s.received, string(buf))
+
 				break // MySQL doesn't expect a response after SSL request
 			} else {
 				// For text protocols, read until newline
@@ -85,6 +92,7 @@ func (s *testServer) start(ctx context.Context) {
 					s.errors <- fmt.Errorf("failed to read client message: %w", err)
 					return
 				}
+
 				s.received = append(s.received, msg)
 
 				// If message is "HANG", simulate a hang by sleeping indefinitely
@@ -99,7 +107,8 @@ func (s *testServer) start(ctx context.Context) {
 				}
 				// Send response for non-HANG messages
 				if s.messages[i] != "HANG" {
-					if _, err := conn.Write([]byte(s.messages[i])); err != nil {
+					_, err := conn.Write([]byte(s.messages[i]))
+					if err != nil {
 						s.errors <- fmt.Errorf("failed to write response: %w", err)
 						return
 					}
@@ -238,23 +247,28 @@ func TestStartTLS(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create test server
-			server, err := newTestServer(tt.port, tt.serverMessages)
+			ctx, cancel := context.WithTimeout(context.Background(), tt.timeout)
+			defer cancel()
+
+			server, err := newTestServer(ctx, tt.port, tt.serverMessages)
 			if err != nil {
 				t.Fatalf("Failed to create test server: %v", err)
 			}
+
 			defer func() {
-				if err := server.stop(); err != nil {
+				err := server.stop()
+				if err != nil {
 					t.Errorf("Failed to stop test server: %v", err)
 				}
 			}()
 
 			// Start server
-			ctx, cancel := context.WithTimeout(context.Background(), tt.timeout)
-			defer cancel()
 			server.start(ctx)
 
 			// Connect client
-			conn, err := net.Dial("tcp", server.addr())
+			dialer := &net.Dialer{}
+
+			conn, err := dialer.DialContext(ctx, "tcp", server.addr())
 			if err != nil {
 				t.Fatalf("Failed to connect to test server: %v", err)
 			}
@@ -269,9 +283,11 @@ func TestStartTLS(t *testing.T) {
 					t.Error("Expected error but got none")
 					return
 				}
+
 				if !errors.Is(err, tt.expectedError) {
 					t.Errorf("Expected error %v but got %v", tt.expectedError, err)
 				}
+
 				return
 			}
 
@@ -300,6 +316,7 @@ func TestDirectTLSPorts(t *testing.T) {
 	for _, port := range directTLSPorts {
 		t.Run(fmt.Sprintf("port_%s", port), func(t *testing.T) {
 			ctx := context.Background()
+
 			err := StartTLS(ctx, nil, port)
 			if err != nil {
 				t.Errorf("Expected nil error for direct TLS port %s, got: %v", port, err)
@@ -310,24 +327,29 @@ func TestDirectTLSPorts(t *testing.T) {
 
 func TestTimeout(t *testing.T) {
 	// Create a server that responds to greeting but hangs on EHLO
-	server, err := newTestServer("25", []string{
+	ctx := context.Background()
+
+	server, err := newTestServer(ctx, "25", []string{
 		"220 test.test.test server\r\n",
 		"HANG", // Special message that causes server to hang
 	})
 	if err != nil {
 		t.Fatalf("Failed to create test server: %v", err)
 	}
+
 	defer func() {
-		if err := server.stop(); err != nil {
+		err := server.stop()
+		if err != nil {
 			t.Errorf("Failed to stop test server: %v", err)
 		}
 	}()
 
-	ctx := context.Background()
 	server.start(ctx)
 
-	// Create a connection with no timeout
-	conn, err := net.Dial("tcp", server.addr())
+	// Create a connection
+	dialer := &net.Dialer{}
+
+	conn, err := dialer.DialContext(ctx, "tcp", server.addr())
 	if err != nil {
 		t.Fatalf("Failed to connect to test server: %v", err)
 	}
