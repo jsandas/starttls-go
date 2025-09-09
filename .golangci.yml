@@ -45,16 +45,13 @@ linters:
       # Exclude some linters from running on tests files.
       - path: _test\.go
         linters:
-          - gocyclo
-          - errcheck
           - dupl
+          - errcheck
+          - gocyclo
           - gosec
+          - lll
   settings:
     dupl:
       threshold: 100
     gocyclo:
       min-complexity: 10
-    gosec:
-      excludes:
-        - G404 # Use of weak random number generator (math/rand instead of crypto/rand)
-        - G402 # Use of weak cryptographic primitives

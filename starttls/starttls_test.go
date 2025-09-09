@@ -28,14 +28,16 @@ var portMap = map[string]string{
 	"3306": "13306", // MySQL
 }
 
-func newTestServer(port string, messages []string) (*testServer, error) {
+func newTestServer(ctx context.Context, port string, messages []string) (*testServer, error) {
 	// Use high-numbered port for testing
 	testPort := portMap[port]
 	if testPort == "" {
 		testPort = port // Use original port if no mapping exists
 	}
 
-	listener, err := net.Listen("tcp", ":"+testPort)
+	lc := net.ListenConfig{}
+
+	listener, err := lc.Listen(ctx, "tcp", ":"+testPort)
 	if err != nil {
 		return nil, fmt.Errorf("failed to start test server: %w", err)
 	}
@@ -245,7 +247,10 @@ func TestStartTLS(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create test server
-			server, err := newTestServer(tt.port, tt.serverMessages)
+			ctx, cancel := context.WithTimeout(context.Background(), tt.timeout)
+			defer cancel()
+
+			server, err := newTestServer(ctx, tt.port, tt.serverMessages)
 			if err != nil {
 				t.Fatalf("Failed to create test server: %v", err)
 			}
@@ -258,9 +263,6 @@ func TestStartTLS(t *testing.T) {
 			}()
 
 			// Start server
-			ctx, cancel := context.WithTimeout(context.Background(), tt.timeout)
-			defer cancel()
-
 			server.start(ctx)
 
 			// Connect client
@@ -323,7 +325,9 @@ func TestDirectTLSPorts(t *testing.T) {
 
 func TestTimeout(t *testing.T) {
 	// Create a server that responds to greeting but hangs on EHLO
-	server, err := newTestServer("25", []string{
+	ctx := context.Background()
+
+	server, err := newTestServer(ctx, "25", []string{
 		"220 test.test.test server\r\n",
 		"HANG", // Special message that causes server to hang
 	})
@@ -338,7 +342,6 @@ func TestTimeout(t *testing.T) {
 		}
 	}()
 
-	ctx := context.Background()
 	server.start(ctx)
 
 	// Create a connection with no timeout
