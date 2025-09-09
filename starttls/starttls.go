@@ -204,101 +204,35 @@ func newMySQLProtocol() *mysqlProtocol {
 	}
 }
 
+// MySQL protocol constants.
+const (
+	clientSSL            = 0x800
+	clientProtocol41     = 0x00000200
+	clientSecureConn     = 0x00008000
+	mysqlProtocolVersion = 10
+	maxMySQLPacketSize   = 16777215
+	utf8GeneralCI        = 33
+)
+
 func (p *mysqlProtocol) Handshake(ctx context.Context, rw *bufio.ReadWriter) error {
-	// Read initial handshake packet header
-	header := make([]byte, 4)
-
-	_, err := io.ReadFull(rw.Reader, header)
+	// Read and parse handshake packet
+	body, err := p.readMySQLPacket(rw)
 	if err != nil {
-		return fmt.Errorf("mysql: failed to read packet header: %w", err)
+		return err
 	}
 
-	// Get packet length (3 bytes, little-endian)
-	length := int(uint32(header[0]) | uint32(header[1])<<8 | uint32(header[2])<<16)
-
-	// Read the packet body
-	body := make([]byte, length)
-
-	_, err = io.ReadFull(rw.Reader, body)
+	capabilities, err := p.parseHandshakePacket(body)
 	if err != nil {
-		return fmt.Errorf("mysql: failed to read packet body: %w", err)
+		return err
 	}
-
-	// Check protocol version (should be 10)
-	if body[0] != 10 {
-		return fmt.Errorf("mysql: unsupported protocol version: %d", body[0])
-	}
-
-	// Skip server version string (null-terminated)
-	pos := 1
-	for pos < len(body) && body[pos] != 0 {
-		pos++
-	}
-
-	pos++ // skip null terminator
-
-	// Skip thread ID (4 bytes)
-	pos += 4
-
-	// Skip auth plugin data part 1 (8 bytes + null terminator)
-	pos += 8
-	for pos < len(body) && body[pos] != 0 {
-		pos++
-	}
-
-	pos++
-
-	// Skip filler (1 byte)
-	pos++
-
-	// Read capability flags (lower 2 bytes)
-	if pos+2 > len(body) {
-		return fmt.Errorf("mysql: packet too short for capability flags")
-	}
-
-	capabilities := uint32(body[pos]) | uint32(body[pos+1])<<8
 
 	// Check if server supports SSL
-	const CLIENT_SSL = 0x800
-	if capabilities&CLIENT_SSL == 0 {
+	if capabilities&clientSSL == 0 {
 		return fmt.Errorf("%w: MySQL server does not support SSL", ErrStartTLSNotSupported)
 	}
 
-	// Send SSL request packet with minimum required capabilities
-	const (
-		CLIENT_PROTOCOL_41       = 0x00000200
-		CLIENT_SECURE_CONNECTION = 0x00008000
-	)
-
-	clientFlags := uint32(CLIENT_SSL | CLIENT_PROTOCOL_41 | CLIENT_SECURE_CONNECTION)
-
-	sslRequest := make([]byte, 4+32) // Header + SSL request packet
-	// Packet header (4 bytes)
-	sslRequest[0] = 32 // payload length
-	sslRequest[1] = 0
-	sslRequest[2] = 0
-	sslRequest[3] = 1 // sequence number
-
-	// Client flags (4 bytes)
-	sslRequest[4] = byte(clientFlags)
-	sslRequest[5] = byte(clientFlags >> 8)
-	sslRequest[6] = byte(clientFlags >> 16)
-	sslRequest[7] = byte(clientFlags >> 24)
-
-	// Max packet size (4 bytes)
-	maxPacketSize := uint32(16777215)
-	sslRequest[8] = byte(maxPacketSize)
-	sslRequest[9] = byte(maxPacketSize >> 8)
-	sslRequest[10] = byte(maxPacketSize >> 16)
-	sslRequest[11] = byte(maxPacketSize >> 24)
-
-	// Character set (1 byte)
-	sslRequest[12] = 33 // utf8_general_ci
-
-	// Reserved (23 bytes)
-	for i := 13; i < 36; i++ {
-		sslRequest[i] = 0
-	}
+	// Send SSL request
+	sslRequest := p.createSSLRequestPacket()
 
 	_, err = rw.Write(sslRequest)
 	if err != nil {
@@ -315,6 +249,90 @@ func (p *mysqlProtocol) Handshake(ctx context.Context, rw *bufio.ReadWriter) err
 
 func (p *mysqlProtocol) Name() string {
 	return p.name
+}
+
+// readMySQLPacket reads a MySQL packet and returns its body.
+func (p *mysqlProtocol) readMySQLPacket(rw *bufio.ReadWriter) ([]byte, error) {
+	header := make([]byte, 4)
+
+	_, err := io.ReadFull(rw.Reader, header)
+	if err != nil {
+		return nil, fmt.Errorf("mysql: failed to read packet header: %w", err)
+	}
+
+	// Get packet length (3 bytes, little-endian)
+	length := int(uint32(header[0]) | uint32(header[1])<<8 | uint32(header[2])<<16)
+
+	body := make([]byte, length)
+
+	_, err = io.ReadFull(rw.Reader, body)
+	if err != nil {
+		return nil, fmt.Errorf("mysql: failed to read packet body: %w", err)
+	}
+
+	return body, nil
+}
+
+// parseHandshakePacket parses the initial handshake packet and returns server capabilities.
+func (p *mysqlProtocol) parseHandshakePacket(body []byte) (uint32, error) {
+	if len(body) == 0 || body[0] != mysqlProtocolVersion {
+		return 0, fmt.Errorf("mysql: unsupported protocol version: %d", body[0])
+	}
+
+	// Skip server version string and other fields
+	pos := 1
+	// Skip to end of server version (null-terminated)
+	for pos < len(body) && body[pos] != 0 {
+		pos++
+	}
+
+	pos++ // skip null terminator
+
+	// Skip thread ID and auth data
+	pos += 4 // thread ID
+	pos += 8 // auth plugin data part 1
+
+	for pos < len(body) && body[pos] != 0 {
+		pos++
+	}
+
+	pos++ // null terminator
+	pos++ // filler
+
+	// Read capability flags
+	if pos+2 > len(body) {
+		return 0, fmt.Errorf("mysql: packet too short for capability flags")
+	}
+
+	return uint32(body[pos]) | uint32(body[pos+1])<<8, nil
+}
+
+// createSSLRequestPacket creates the SSL request packet.
+func (p *mysqlProtocol) createSSLRequestPacket() []byte {
+	clientFlags := uint32(clientSSL | clientProtocol41 | clientSecureConn)
+	packet := make([]byte, 4+32) // Header + SSL request packet
+
+	// Packet header
+	packet[0] = 32 // payload length
+	packet[3] = 1  // sequence number
+
+	// Client flags (4 bytes)
+	packet[4] = byte(clientFlags)
+	packet[5] = byte(clientFlags >> 8)
+	packet[6] = byte(clientFlags >> 16)
+	packet[7] = byte(clientFlags >> 24)
+
+	// Max packet size (4 bytes)
+	maxSize := uint32(maxMySQLPacketSize)
+	packet[8] = byte(maxSize)
+	packet[9] = byte(maxSize >> 8)
+	packet[10] = byte(maxSize >> 16)
+	packet[11] = byte(maxSize >> 24)
+
+	// Character set
+	packet[12] = utf8GeneralCI
+
+	return packet
 }
 
 // Helper functions.
