@@ -266,7 +266,9 @@ func TestStartTLS(t *testing.T) {
 			server.start(ctx)
 
 			// Connect client
-			conn, err := net.Dial("tcp", server.addr())
+			dialer := &net.Dialer{}
+
+			conn, err := dialer.DialContext(ctx, "tcp", server.addr())
 			if err != nil {
 				t.Fatalf("Failed to connect to test server: %v", err)
 			}
@@ -344,8 +346,10 @@ func TestTimeout(t *testing.T) {
 
 	server.start(ctx)
 
-	// Create a connection with no timeout
-	conn, err := net.Dial("tcp", server.addr())
+	// Create a connection
+	dialer := &net.Dialer{}
+
+	conn, err := dialer.DialContext(ctx, "tcp", server.addr())
 	if err != nil {
 		t.Fatalf("Failed to connect to test server: %v", err)
 	}
