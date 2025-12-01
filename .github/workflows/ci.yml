@@ -1,22 +1,12 @@
-name: CI
+name: CI Tests
 
 on:
-  pull_request:
-    branches: [ main ]
-    paths:
-      - '**.go'
-      - '**.mod'
-      - '**.sum'
-      - '.github/workflows/ci.yml'
-      - ".golangci.yml"
   push:
-    branches: [ main ]
-    paths:
-      - '**.go'
-      - '**.mod'
-      - '**.sum'
-      - '.github/workflows/ci.yml'
-      - ".golangci.yml"
+    branches:
+      - '*'
+  pull_request:
+    branches:
+      - main
 
 jobs:
   lint:
@@ -31,23 +21,19 @@ jobs:
     uses: jsandas/github-actions/.github/workflows/golang-security.yml@main
 
   test:
-    name: Run Tests
+    name: Unit Tests
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     needs: [lint]
     
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v6
+    - uses: actions/checkout@v6
       
-    - name: Set up Go
-      uses: actions/setup-go@v6
+    - uses: actions/setup-go@v6
       with:
         go-version-file: "go.mod"
         cache: true
-        
-    - name: Download dependencies
-      run: go mod download
-        
-    - name: Run unit tests with coverage
-      run: |
-        go test -v -race -coverprofile=coverage.txt -covermode=atomic ./...
+
+    - name: Run unit tests
+      run: make test-unit
