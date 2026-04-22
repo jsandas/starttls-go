@@ -9,7 +9,7 @@ updates:
         patterns:
           - "*"
   - package-ecosystem: "github-actions"
-    directory: ".github/workflows"
+    directory: "/"
     schedule:
       interval: "monthly"
     groups:
