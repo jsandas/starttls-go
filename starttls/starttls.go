@@ -3,6 +3,7 @@ package starttls
 import (
 	"bufio"
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -317,17 +318,11 @@ func (p *mysqlProtocol) createSSLRequestPacket() []byte {
 	packet[3] = 1  // sequence number
 
 	// Client flags (4 bytes)
-	packet[4] = byte(clientFlags)
-	packet[5] = byte(clientFlags >> 8)
-	packet[6] = byte(clientFlags >> 16)
-	packet[7] = byte(clientFlags >> 24)
+	binary.LittleEndian.PutUint32(packet[4:8], clientFlags)
 
 	// Max packet size (4 bytes)
 	maxSize := uint32(maxMySQLPacketSize)
-	packet[8] = byte(maxSize)
-	packet[9] = byte(maxSize >> 8)
-	packet[10] = byte(maxSize >> 16)
-	packet[11] = byte(maxSize >> 24)
+	binary.LittleEndian.PutUint32(packet[8:12], maxSize)
 
 	// Character set
 	packet[12] = utf8GeneralCI
