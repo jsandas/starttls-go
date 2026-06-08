@@ -11,6 +11,10 @@ import (
 	"time"
 )
 
+const (
+	hangMessage = "HANG"
+)
+
 type testServer struct {
 	listener net.Listener
 	port     string
@@ -96,7 +100,7 @@ func (s *testServer) start(ctx context.Context) {
 				s.received = append(s.received, msg)
 
 				// If message is "HANG", simulate a hang by sleeping indefinitely
-				if s.messages[i] == "HANG" {
+				if s.messages[i] == hangMessage {
 					select {
 					case <-ctx.Done():
 						s.errors <- ctx.Err()
@@ -106,7 +110,7 @@ func (s *testServer) start(ctx context.Context) {
 					}
 				}
 				// Send response for non-HANG messages
-				if s.messages[i] != "HANG" {
+				if s.messages[i] != hangMessage {
 					_, err := conn.Write([]byte(s.messages[i]))
 					if err != nil {
 						s.errors <- fmt.Errorf("failed to write response: %w", err)
@@ -128,6 +132,18 @@ func (s *testServer) addr() string {
 	return s.listener.Addr().String()
 }
 
+const (
+	serverMessagesStart        = "220 test.test.test server\r\n"
+	serverMessagesFTP          = "234 ready\r\n"
+	serverMessagesSMTP         = "250-test.test.test\r\n250 STARTTLS\r\n"
+	serverMessagesSMTPNoTLS    = "250-test.test.test\r\n250 NO-STARTTLS\r\n"
+	serverMessagesIMAP         = "* OK IMAP server ready\r\n"
+	serverMessagesIMAPSuccess  = "a001 OK Begin TLS negotiation now\r\n"
+	serverMessagesPOP3         = "+OK POP3 server ready\r\n"
+	serverMessagesPOP3Success  = "+OK Begin TLS negotiation\r\n"
+	serverMessagesNotSupported = "500 Not supported\r\n"
+)
+
 func TestStartTLS(t *testing.T) {
 	tests := []struct {
 		name           string
@@ -141,8 +157,8 @@ func TestStartTLS(t *testing.T) {
 			name: "ftp success",
 			port: "21",
 			serverMessages: []string{
-				"220 test.test.test server\r\n",
-				"234 ready\r\n",
+				serverMessagesStart,
+				serverMessagesFTP,
 			},
 			timeout: 2 * time.Second,
 		},
@@ -150,8 +166,8 @@ func TestStartTLS(t *testing.T) {
 			name: "smtp success",
 			port: "25",
 			serverMessages: []string{
-				"220 test.test.test server\r\n",
-				"250-test.test.test\r\n250 STARTTLS\r\n",
+				serverMessagesStart,
+				serverMessagesSMTP,
 				"220 ready for TLS\r\n",
 			},
 			timeout: 2 * time.Second,
@@ -160,8 +176,8 @@ func TestStartTLS(t *testing.T) {
 			name: "imap success",
 			port: "143",
 			serverMessages: []string{
-				"* OK IMAP server ready\r\n",
-				"a001 OK Begin TLS negotiation now\r\n",
+				serverMessagesIMAP,
+				serverMessagesIMAPSuccess,
 			},
 			timeout: 2 * time.Second,
 		},
@@ -169,8 +185,8 @@ func TestStartTLS(t *testing.T) {
 			name: "pop3 success",
 			port: "110",
 			serverMessages: []string{
-				"+OK POP3 server ready\r\n",
-				"+OK Begin TLS negotiation\r\n",
+				serverMessagesPOP3,
+				serverMessagesPOP3Success,
 			},
 			timeout: 2 * time.Second,
 		},
@@ -186,9 +202,9 @@ func TestStartTLS(t *testing.T) {
 			name: "smtp starttls not supported",
 			port: "25",
 			serverMessages: []string{
-				"220 test.test.test server\r\n",
-				"250-test.test.test\r\n250 NO-STARTTLS\r\n",
-				"500 Not supported\r\n",
+				serverMessagesStart,
+				serverMessagesSMTPNoTLS,
+				serverMessagesNotSupported,
 			},
 			expectError:   true,
 			expectedError: ErrStartTLSNotSupported,
