@@ -410,7 +410,7 @@ func StartTLS(ctx context.Context, conn net.Conn, port string) error {
 	if !ok {
 		// These ports use direct TLS connections
 		switch port {
-		case "443", "465", "993", "995", "3389":
+		case "443", "465", "993", "995", "3389", "8443", "9443":
 			return nil
 		default:
 			return fmt.Errorf("%w: port %s", ErrUnsupportedProtocol, port)

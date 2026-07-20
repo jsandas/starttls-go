@@ -13,7 +13,7 @@ A Go module that handles STARTTLS negotiation for various protocols. STARTTLS al
 - POP3 (port 110)
 - FTP (port 21)
 - MySQL (port 3306)
-- Direct TLS ports (443, 465, 993, 995, 3389)
+- Direct TLS ports (443, 465, 993, 995, 3389, 8443, 9443)
 
 ## Installation
 

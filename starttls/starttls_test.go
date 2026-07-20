@@ -327,7 +327,7 @@ func TestStartTLS(t *testing.T) {
 }
 
 func TestDirectTLSPorts(t *testing.T) {
-	directTLSPorts := []string{"443", "465", "993", "995", "3389"}
+	directTLSPorts := []string{"443", "465", "993", "995", "3389", "8443", "9443"}
 
 	for _, port := range directTLSPorts {
 		t.Run(fmt.Sprintf("port_%s", port), func(t *testing.T) {
