@@ -191,14 +191,6 @@ func TestStartTLS(t *testing.T) {
 			timeout: 2 * time.Second,
 		},
 		{
-			name:           "unsupported protocol",
-			port:           "1234",
-			serverMessages: []string{},
-			expectError:    true,
-			expectedError:  ErrUnsupportedProtocol,
-			timeout:        1 * time.Second,
-		},
-		{
 			name: "smtp starttls not supported",
 			port: "25",
 			serverMessages: []string{

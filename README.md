@@ -101,16 +101,14 @@ For more examples, see the [examples](./examples) directory.
 - Checks SSL capability flags
 - Manages SSL request packet
 
-### Direct TLS
-- Automatically handles ports that use direct TLS
-- No negotiation needed for ports 443, 465, 993, 995, 3389, 8443, 9443
+### HTTPS
+- No-op for all other ports
 
 ## Error Handling
 
 The module provides specific error types:
 - `ErrStartTLSNotSupported`: Server doesn't support STARTTLS
 - `ErrInvalidResponse`: Invalid server response
-- `ErrUnsupportedProtocol`: Protocol/port not supported
 
 ## Security Considerations
 
