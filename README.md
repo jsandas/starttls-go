@@ -103,7 +103,7 @@ For more examples, see the [examples](./examples) directory.
 
 ### Direct TLS
 - Automatically handles ports that use direct TLS
-- No negotiation needed for ports 443, 465, 993, 995, 3389
+- No negotiation needed for ports 443, 465, 993, 995, 3389, 8443, 9443
 
 ## Error Handling
 
