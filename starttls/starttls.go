@@ -16,7 +16,6 @@ import (
 var (
 	ErrStartTLSNotSupported = errors.New("STARTTLS not supported by server")
 	ErrInvalidResponse      = errors.New("invalid server response")
-	ErrUnsupportedProtocol  = errors.New("unsupported protocol")
 )
 
 // StartTLSProtocol defines the interface for protocol-specific STARTTLS implementations.
@@ -408,13 +407,8 @@ func StartTLS(ctx context.Context, conn net.Conn, port string) error {
 	// Check if this is a STARTTLS protocol
 	protocolFactory, ok := protocols[port]
 	if !ok {
-		// These ports use direct TLS connections
-		switch port {
-		case "443", "465", "993", "995", "3389", "8443", "9443":
-			return nil
-		default:
-			return fmt.Errorf("%w: port %s", ErrUnsupportedProtocol, port)
-		}
+		// If the port is not recognized, we assume STARTTLS not required and return nil.
+		return nil
 	}
 
 	protocol := protocolFactory()
