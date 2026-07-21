@@ -101,9 +101,8 @@ For more examples, see the [examples](./examples) directory.
 - Checks SSL capability flags
 - Manages SSL request packet
 
-### HTTPS
-- No-op for all other ports
-
+### Non-STARTTLS (unknown) ports
+- No-op for ports that are not in the STARTTLS protocol map (callers should establish TLS directly when required)
 ## Error Handling
 
 The module provides specific error types:
