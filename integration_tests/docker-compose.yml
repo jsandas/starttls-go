@@ -1,18 +1,18 @@
 services:
-  # https://github.com/thkukuk/containers-mailserver/blob/master/postfix/README.md
-  postfix:
-    image: registry.opensuse.org/opensuse/postfix
+  # https://github.com/thkukuk/containers-mailserver/blob/master/dovecot/README.md
+  dovecot:
+    image: registry.opensuse.org/opensuse/dovecot
     ports:
-      - "25:25"
-      - "587:587"
+      - "143:143"
+      - "993:993"
     environment:
-      - SERVER_HOSTNAME=smtp.example.com
-      - ENABLE_SUBMISSION=1
-      - SMTPD_USE_TLS=1
-      - SMTPD_TLS_CRT=/etc/postfix/ssl/certs/tls.crt
-      - SMTPD_TLS_KEY=/etc/postfix/ssl/certs/tls.key
+      - DOVECOT_TLS_CRT=/etc/certs/tls.crt
+      - DOVECOT_TLS_KEY=/etc/certs/tls.key
+      - DOVECOT_TLS_DH_PARAM=/etc/certs/dhparam.pem
+      - ENABLE_IMAP=1
+      - ENABLE_POP3=1
     volumes:
-      - ./postfix/certs:/etc/postfix/ssl/certs:ro
+      - ./dovecot/certs:/etc/certs:ro
 
   # https://github.com/thkukuk/containers-mailserver/blob/master/openldap/README.md
   openldap:
@@ -31,3 +31,18 @@ services:
       - LDAP_TLS_CA_CRT=/etc/openldap/certs/tls.crt
     volumes:
       - ./openldap/certs:/etc/openldap/certs:ro
+
+  # https://github.com/thkukuk/containers-mailserver/blob/master/postfix/README.md
+  postfix:
+    image: registry.opensuse.org/opensuse/postfix
+    ports:
+      - "25:25"
+      - "587:587"
+    environment:
+      - SERVER_HOSTNAME=smtp.example.com
+      - ENABLE_SUBMISSION=1
+      - SMTPD_USE_TLS=1
+      - SMTPD_TLS_CRT=/etc/postfix/ssl/certs/tls.crt
+      - SMTPD_TLS_KEY=/etc/postfix/ssl/certs/tls.key
+    volumes:
+      - ./postfix/certs:/etc/postfix/ssl/certs:ro
