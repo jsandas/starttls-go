@@ -22,13 +22,13 @@ services:
   #  https://github.com/thkukuk/containers-mailserver/blob/master/openldap/README.md
   openldap:
     image: registry.opensuse.org/opensuse/openldap
-    hostname: ldap.example.org
+    hostname: ldap.example.com
     ports:
       - "389:389" # LDAP w/ STARTTLS
       # - "636:636" # LDAPS
     environment:
       - LDAP_ORGANISATION="Example Inc."
-      - LDAP_DOMAIN=example.org
+      - LDAP_DOMAIN=example.com
       - LDAP_ADMIN_PASSWORD=admin123
       - LDAP_CONFIG_PASSWORD=config123
       - LDAP_TLS_CRT=/etc/openldap/certs/tls.crt
