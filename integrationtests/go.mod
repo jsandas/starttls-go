@@ -1,4 +1,4 @@
-module github.com/jsandas/starttls-go/integration_tests
+module github.com/jsandas/starttls-go/integrationtests
 
 go 1.24
 
