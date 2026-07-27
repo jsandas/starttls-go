@@ -4,7 +4,7 @@ set -e
 echo "Running setup script..."
 
 CURRENT_DIR=$(pwd)
-if [ $(basename "$CURRENT_DIR") != "integrationtests" ]; then
+if [ $(basename "$CURRENT_DIR") != "integration_tests" ]; then
     echo "Please run this script from the integrationtests directory."
     exit 1
 fi
