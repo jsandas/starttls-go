@@ -22,8 +22,11 @@ jobs:
           cache: true
 
       - name: Run integration tests
+        env:
+          WORKSPACE: ${{ github.workspace }}
         run: |
           cd integration_tests && bash setup.sh
+          cd $WORKSPACE
           docker compose -f integration_tests/docker-compose.yml up -d
           sleep 15
           cd integration_tests && go test -v -tags=integration ./...
