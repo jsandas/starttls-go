@@ -36,15 +36,18 @@ openssl req -x509 -newkey rsa:2048 \
     -out postfix/certs/tls.crt
 
 # Download DH parameters if they don't exist (or just overwrite for simplicity in test environment)
-echo "Generating DH parameters for Dovecot and OpenLDAP..."
+echo "Setting up DH parameters for Dovecot and OpenLDAP..."
 if [ ! -f "dhparam.pem" ]; then
-    echo "DH parameters do not exist. Generating..."
-    curl https://ssl-config.mozilla.org/ffdhe2048.txt > dhparam.pem
+    echo "DH parameters do not exist. Downloading..."
+    curl -fsSL https://ssl-config.mozilla.org/ffdhe2048.txt -o dhparam.pem
 
     cp dhparam.pem dovecot/certs/dhparam.pem
     cp dhparam.pem openldap/certs/dhparam.pem
 else  
     echo "DH parameters already exist. Overwriting..."
+
+    cp dhparam.pem dovecot/certs/dhparam.pem
+    cp dhparam.pem openldap/certs/dhparam.pem
 fi
 
 echo "Setup complete."
