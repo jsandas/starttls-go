@@ -23,10 +23,10 @@ jobs:
 
       - name: Run integration tests
         run: |
-          @set -e; \
-          cd integrationtests; \
-          bash setup.sh; \
-          trap 'docker compose -f docker-compose.yml down' EXIT; \
-          docker compose -f docker-compose.yml up -d; \
-          sleep 15; \
+          set -e
+          cd integration_tests
+          bash setup.sh
+          trap 'docker compose -f docker-compose.yml down' EXIT
+          docker compose -f docker-compose.yml up -d
+          sleep 15
           go test -v -tags=integration ./...
