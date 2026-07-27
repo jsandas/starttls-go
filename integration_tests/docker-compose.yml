@@ -1,20 +1,25 @@
 services:
   # https://github.com/thkukuk/containers-mailserver/blob/master/dovecot/README.md
-  dovecot:
-    image: registry.opensuse.org/opensuse/dovecot
-    ports:
-      - "143:143"
-      - "993:993"
-    environment:
-      - DOVECOT_TLS_CRT=/etc/certs/tls.crt
-      - DOVECOT_TLS_KEY=/etc/certs/tls.key
-      - DOVECOT_TLS_DH_PARAM=/etc/certs/dhparam.pem
-      - ENABLE_IMAP=1
-      - ENABLE_POP3=1
-    volumes:
-      - ./dovecot/certs:/etc/certs:ro
+  # dovecot:
+  #   image: registry.opensuse.org/opensuse/dovecot
+  #   ports:
+  #     - "110:110"
+  #     - "143:143"
+  #     # - "993:993"
+  #     # - "995:995"
+  #   environment:
+  #     # - DEBUG=1
+  #     - DOVECOT_TLS=1
+  #     - DOVECOT_TLS_CRT=/etc/certs/tls.crt
+  #     - DOVECOT_TLS_KEY=/etc/certs/tls.key
+  #     - DOVECOT_TLS_DH_PARAM=/etc/certs/dhparam.pem
+  #     - ENABLE_IMAP=1
+  #     - ENABLE_POP3=1
+  #   # volumes:
+  #   #   - ./dovecot/certs:/etc/certs:ro
+  #   #   - ./dovecot/conf:/etc/dovecot:rw
 
-  # https://github.com/thkukuk/containers-mailserver/blob/master/openldap/README.md
+  #  https://github.com/thkukuk/containers-mailserver/blob/master/openldap/README.md
   openldap:
     image: registry.opensuse.org/opensuse/openldap
     hostname: ldap.example.org

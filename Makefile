@@ -1,11 +1,22 @@
-.PHONY: test test-unit
+.PHONY: test test-unit test-integration test-integration-down
 
 # Run all tests and quality checks
-test: quality test-unit
+test: quality test-unit test-integration
 
 # Run unit tests only
 test-unit:
 	@go test -v ./...
+
+# Run integration tests
+test-integration:
+	cd integration_tests && bash setup.sh
+	docker compose -f integration_tests/docker-compose.yml up -d
+	sleep 15
+	cd integration_tests && go test -v -tags=integration ./...
+
+# Shutdown docker after integration tests
+test-integration-down:
+	docker compose -f integration_tests/docker-compose.yml down
 
 # Run all code quality checks
 quality: fmt-check go-mod-tidy lint
@@ -51,6 +62,8 @@ help:
 	@echo "Available targets:"
 	@echo "  test               - Run all tests (integration tests)"
 	@echo "  test-unit          - Show unit test status"
+	@echo "  test-integration   - Run integration tests"
+	@echo "  test-integration-down - Shutdown docker after integration tests"
 	@echo ""
 	@echo "Code Quality:"
 	@echo "  quality            - Run all code quality checks"
