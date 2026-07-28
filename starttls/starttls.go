@@ -316,6 +316,10 @@ func encodeBERTLV(tag byte, value []byte) []byte {
 }
 
 func encodeBERLength(length int) []byte {
+	if length < 0 {
+		panic("encodeBERLength: negative length")
+	}
+
 	if length < 0x80 {
 		return []byte{byte(length)}
 	}
@@ -329,8 +333,26 @@ func encodeBERLength(length int) []byte {
 	}
 
 	content := tmp[pos:]
+
 	result := make([]byte, 1+len(content))
-	result[0] = 0x80 | byte(len(content))
+
+	if len(content) > 0x7f {
+		panic("encodeBERLength: length-of-length too large")
+	}
+
+	switch len(content) {
+	case 1:
+		result[0] = 0x81
+	case 2:
+		result[0] = 0x82
+	case 3:
+		result[0] = 0x83
+	case 4:
+		result[0] = 0x84
+	default:
+		panic("encodeBERLength: invalid length-of-length")
+	}
+
 	copy(result[1:], content)
 
 	return result
