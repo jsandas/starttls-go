@@ -210,14 +210,15 @@ func newLDAPProtocol() *ldapProtocol {
 }
 
 func (p *ldapProtocol) Handshake(ctx context.Context, rw *bufio.ReadWriter) error {
-	if err := ctx.Err(); err != nil {
+	err := ctx.Err()
+	if err != nil {
 		return err
 	}
 
 	messageID := int(atomic.AddUint32(&ldapMessageIDCounter, 1))
 	request := encodeStartTLSRequest(messageID)
 
-	_, err := rw.Write(request)
+	_, err = rw.Write(request)
 	if err != nil {
 		return fmt.Errorf("ldap: failed to write StartTLS request: %w", err)
 	}
@@ -227,7 +228,8 @@ func (p *ldapProtocol) Handshake(ctx context.Context, rw *bufio.ReadWriter) erro
 		return fmt.Errorf("ldap: failed to flush StartTLS request: %w", err)
 	}
 
-	if err := ctx.Err(); err != nil {
+	err = ctx.Err()
+	if err != nil {
 		return err
 	}
 
@@ -319,6 +321,7 @@ func encodeBERLength(length int) []byte {
 	}
 
 	var tmp [4]byte
+
 	pos := len(tmp)
 	for l := length; l > 0; l >>= 8 {
 		pos--
@@ -339,7 +342,9 @@ func encodeBERIntegerValue(n int) []byte {
 	}
 
 	var tmp [8]byte
+
 	i := len(tmp)
+
 	v := n
 	for v > 0 {
 		i--
@@ -367,6 +372,7 @@ func readBERElement(r *bufio.Reader) (byte, []byte, error) {
 	}
 
 	value := make([]byte, length)
+
 	_, err = io.ReadFull(r, value)
 	if err != nil {
 		return 0, nil, fmt.Errorf("%w: failed to read BER value: %v", ErrInvalidResponse, err)
@@ -395,6 +401,7 @@ func readBERLength(r *bufio.Reader) (int, error) {
 	}
 
 	buf := make([]byte, numBytes)
+
 	_, err = io.ReadFull(r, buf)
 	if err != nil {
 		return 0, fmt.Errorf("%w: failed to read BER length bytes: %v", ErrInvalidResponse, err)
@@ -414,12 +421,14 @@ func parseBERElement(data []byte) (byte, []byte, []byte, error) {
 	}
 
 	tag := data[0]
+
 	length, lengthBytes, err := parseBERLength(data[1:])
 	if err != nil {
 		return 0, nil, nil, err
 	}
 
 	start := 1 + lengthBytes
+
 	end := start + length
 	if end > len(data) {
 		return 0, nil, nil, fmt.Errorf("%w: BER element length exceeds payload", ErrInvalidResponse)
