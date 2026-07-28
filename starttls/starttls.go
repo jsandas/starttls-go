@@ -265,44 +265,62 @@ func parseLDAPResponse(rw *bufio.ReadWriter) (int, error) {
 		return 0, fmt.Errorf("%w: expected LDAPMessage SEQUENCE, got tag 0x%02x", ErrInvalidResponse, tag)
 	}
 
-	messageIDTag, messageIDValue, rest, err := parseBERElement(payload)
+	messageID, protocolOpValue, err := parseLDAPMessageIDAndProtocolOp(payload)
 	if err != nil {
 		return 0, err
 	}
 
+	err = validateLDAPResultCode(protocolOpValue)
+	if err != nil {
+		return messageID, err
+	}
+
+	return messageID, nil
+}
+
+func parseLDAPMessageIDAndProtocolOp(payload []byte) (int, []byte, error) {
+	messageIDTag, messageIDValue, rest, err := parseBERElement(payload)
+	if err != nil {
+		return 0, nil, err
+	}
+
 	if messageIDTag != 0x02 {
-		return 0, fmt.Errorf("%w: expected messageID INTEGER, got tag 0x%02x", ErrInvalidResponse, messageIDTag)
+		return 0, nil, fmt.Errorf("%w: expected messageID INTEGER, got tag 0x%02x", ErrInvalidResponse, messageIDTag)
 	}
 
 	messageID, err := decodeBERInteger(messageIDValue)
 	if err != nil {
-		return 0, fmt.Errorf("%w: invalid messageID: %w", ErrInvalidResponse, err)
+		return 0, nil, fmt.Errorf("%w: invalid messageID: %w", ErrInvalidResponse, err)
 	}
 
 	_, protocolOpValue, _, err := parseBERElement(rest)
 	if err != nil {
-		return messageID, err
+		return messageID, nil, err
 	}
 
+	return messageID, protocolOpValue, nil
+}
+
+func validateLDAPResultCode(protocolOpValue []byte) error {
 	resultCodeTag, resultCodeValue, _, err := parseBERElement(protocolOpValue)
 	if err != nil {
-		return messageID, err
+		return err
 	}
 
 	if resultCodeTag != 0x0a && resultCodeTag != 0x02 {
-		return messageID, fmt.Errorf("%w: expected resultCode ENUMERATED, got tag 0x%02x", ErrInvalidResponse, resultCodeTag)
+		return fmt.Errorf("%w: expected resultCode ENUMERATED, got tag 0x%02x", ErrInvalidResponse, resultCodeTag)
 	}
 
 	resultCode, err := decodeBERInteger(resultCodeValue)
 	if err != nil {
-		return messageID, fmt.Errorf("%w: invalid resultCode: %w", ErrInvalidResponse, err)
+		return fmt.Errorf("%w: invalid resultCode: %w", ErrInvalidResponse, err)
 	}
 
 	if resultCode != 0 {
-		return messageID, fmt.Errorf("ldap resultCode=%d", resultCode)
+		return fmt.Errorf("ldap resultCode=%d", resultCode)
 	}
 
-	return messageID, nil
+	return nil
 }
 
 func encodeBERTLV(tag byte, value []byte) []byte {
