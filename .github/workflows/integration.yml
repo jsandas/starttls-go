@@ -30,3 +30,4 @@ jobs:
           docker compose -f docker-compose.yml up -d
           sleep 30
           go test -v -tags=integration ./...
+          docker compose logs -f openldap
