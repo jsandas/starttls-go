@@ -26,8 +26,9 @@ jobs:
           set -e
           cd integration_tests
           bash setup.sh
-          trap 'docker compose logs openldap && docker compose -f docker-compose.yml down' EXIT
+          ls -la
+          ls -la openldap/certs
+          trap 'docker compose -f docker-compose.yml down' EXIT
           docker compose -f docker-compose.yml up --quiet-pull  -d
-          sleep 30
-          timeout 5 openssl s_client -connect localhost:389 -starttls ldap
+          sleep 15
           go test -v -tags=integration ./...
