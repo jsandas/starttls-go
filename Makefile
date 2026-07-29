@@ -9,14 +9,14 @@ test-unit:
 
 # Run integration tests
 test-integration:
-	cd integrationtests && bash setup.sh
-	docker compose -f integrationtests/docker-compose.yml up -d
+	cd integration_tests && bash setup.sh
+	docker compose -f integration_tests/docker-compose.yml up -d
 	sleep 15
-	cd integrationtests && go test -v -tags=integration ./...
+	cd integration_tests && go test -v -tags=integration ./...
 
 # Shutdown docker after integration tests
 test-integration-down:
-	docker compose -f integrationtests/docker-compose.yml down
+	docker compose -f integration_tests/docker-compose.yml down
 
 # Run all code quality checks
 quality: fmt-check go-mod-tidy lint

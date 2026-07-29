@@ -2,11 +2,15 @@ package starttls
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"net"
+	"regexp"
+	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -29,6 +33,7 @@ var portMap = map[string]string{
 	"25":   "10025", // SMTP
 	"110":  "10110", // POP3
 	"143":  "10143", // IMAP
+	"389":  "10389", // LDAP
 	"3306": "13306", // MySQL
 }
 
@@ -65,8 +70,8 @@ func (s *testServer) start(ctx context.Context) {
 
 		reader := bufio.NewReader(conn)
 
-		// Send greeting
-		if len(s.messages) > 0 {
+		// Send greeting for text-based protocols
+		if len(s.messages) > 0 && s.port != "389" {
 			_, err := conn.Write([]byte(s.messages[0]))
 			if err != nil {
 				s.errors <- fmt.Errorf("failed to write greeting: %w", err)
@@ -75,21 +80,44 @@ func (s *testServer) start(ctx context.Context) {
 		}
 
 		// Read client messages and respond
-		for i := 1; i < len(s.messages); i++ {
-			// For MySQL, just read the SSL request packet and don't respond
-			if s.port == "3306" {
-				buf := make([]byte, 36) // Size of MySQL SSL request packet
+		switch s.port {
+		case "3306":
+			buf := make([]byte, 36) // Size of MySQL SSL request packet
 
-				_, err := io.ReadFull(reader, buf)
-				if err != nil && !errors.Is(err, io.EOF) {
-					s.errors <- fmt.Errorf("failed to read MySQL SSL request: %w", err)
-					return
-				}
+			_, err := io.ReadFull(reader, buf)
+			if err != nil && !errors.Is(err, io.EOF) {
+				s.errors <- fmt.Errorf("failed to read MySQL SSL request: %w", err)
+				return
+			}
 
-				s.received = append(s.received, string(buf))
+			s.received = append(s.received, string(buf))
+		case "389":
+			_, payload, err := readBERElement(reader)
+			if err != nil {
+				s.errors <- fmt.Errorf("failed to read LDAP request: %w", err)
+				return
+			}
 
-				break // MySQL doesn't expect a response after SSL request
-			} else {
+			s.received = append(s.received, fmt.Sprintf("ldap:%x", payload))
+
+			messageID, _, _, err := parseLDAPMessageIDAndProtocolOp(payload)
+			if err != nil {
+				s.errors <- fmt.Errorf("failed to decode LDAP messageID: %w", err)
+				return
+			}
+
+			ldapResult := append(encodeBERTLV(0x0a, []byte{0x00}), encodeBERTLV(0x04, []byte{})...)
+			ldapResult = append(ldapResult, encodeBERTLV(0x04, []byte{})...)
+			extendedResponse := encodeBERTLV(0x78, ldapResult)
+			response := encodeBERTLV(0x30, append(encodeBERTLV(0x02, encodeBERIntegerValue(messageID)), extendedResponse...))
+
+			_, err = conn.Write(response)
+			if err != nil {
+				s.errors <- fmt.Errorf("failed to write LDAP response: %w", err)
+				return
+			}
+		default:
+			for i := 1; i < len(s.messages); i++ {
 				// For text protocols, read until newline
 				msg, err := reader.ReadString('\n')
 				if err != nil && !errors.Is(err, io.EOF) {
@@ -201,6 +229,11 @@ func TestStartTLS(t *testing.T) {
 			expectError:   true,
 			expectedError: ErrStartTLSNotSupported,
 			timeout:       2 * time.Second,
+		},
+		{
+			name:    "ldap success",
+			port:    "389",
+			timeout: 2 * time.Second,
 		},
 		{
 			name: "mysql success",
@@ -378,5 +411,549 @@ func TestTimeout(t *testing.T) {
 	// The error should be a context deadline exceeded error
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Errorf("Expected context deadline exceeded error, got: %v", err)
+	}
+}
+
+func TestLDAPHandshakeMessageIDMismatch(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	atomic.StoreUint32(&ldapMessageIDCounter, 0)
+
+	clientConn, serverConn := net.Pipe()
+	defer clientConn.Close()
+	defer serverConn.Close()
+
+	serverErr := make(chan error, 1)
+
+	go func() {
+		defer close(serverErr)
+
+		reader := bufio.NewReader(serverConn)
+
+		var payload []byte
+
+		var err error
+
+		_, payload, err = readBERElement(reader)
+		if err != nil {
+			serverErr <- err
+			return
+		}
+
+		messageID, _, _, err := parseLDAPMessageIDAndProtocolOp(payload)
+		if err != nil {
+			serverErr <- err
+			return
+		}
+
+		// Reply with a different message ID to trigger the mismatch branch.
+		response := buildLDAPExtendedResponse(messageID+1, 0)
+
+		_, err = serverConn.Write(response)
+		if err != nil {
+			serverErr <- err
+			return
+		}
+
+		serverErr <- nil
+	}()
+
+	err := StartTLS(ctx, clientConn, "389")
+	if err == nil {
+		t.Fatal("expected LDAP messageID mismatch error, got nil")
+	}
+
+	if !strings.Contains(err.Error(), "messageID mismatch") {
+		t.Fatalf("expected messageID mismatch error, got: %v", err)
+	}
+
+	err = <-serverErr
+	if err != nil {
+		t.Fatalf("server error: %v", err)
+	}
+}
+
+func TestParseLDAPResponseErrorCases(t *testing.T) {
+	tests := []struct {
+		name        string
+		response    []byte
+		errContains string
+	}{
+		{
+			name:        "invalid top-level tag",
+			response:    encodeBERTLV(0x31, []byte{}),
+			errContains: "expected LDAPMessage SEQUENCE",
+		},
+		{
+			name:        "non-success result code",
+			response:    buildLDAPExtendedResponse(1, 2),
+			errContains: "ldap resultCode=2",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rw := bufio.NewReadWriter(bufio.NewReader(bytes.NewReader(tt.response)), bufio.NewWriter(io.Discard))
+
+			_, err := parseLDAPResponse(rw)
+			if err == nil {
+				t.Fatal("expected error, got nil")
+			}
+
+			if !strings.Contains(err.Error(), tt.errContains) {
+				t.Fatalf("expected error containing %q, got: %v", tt.errContains, err)
+			}
+		})
+	}
+}
+
+func TestParseBERLengthErrorCases(t *testing.T) {
+	tests := []struct {
+		name string
+		data []byte
+	}{
+		{name: "missing length", data: []byte{}},
+		{name: "indefinite length", data: []byte{0x80}},
+		{name: "length too large", data: []byte{0x85, 0x01, 0x02, 0x03, 0x04, 0x05}},
+		{name: "incomplete long-form length", data: []byte{0x82, 0x01}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, _, err := parseBERLength(tt.data)
+			if err == nil {
+				t.Fatal("expected error, got nil")
+			}
+
+			if !errors.Is(err, ErrInvalidResponse) {
+				t.Fatalf("expected ErrInvalidResponse, got: %v", err)
+			}
+		})
+	}
+}
+
+func TestReadBERLengthErrorCases(t *testing.T) {
+	tests := []struct {
+		name string
+		data []byte
+	}{
+		{name: "missing first byte", data: []byte{}},
+		{name: "indefinite length", data: []byte{0x80}},
+		{name: "length too large", data: []byte{0x85, 0x00, 0x00, 0x00, 0x00, 0x00}},
+		{name: "incomplete length bytes", data: []byte{0x82, 0x01}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := bufio.NewReader(bytes.NewReader(tt.data))
+
+			_, err := readBERLength(r)
+			if err == nil {
+				t.Fatal("expected error, got nil")
+			}
+
+			if !errors.Is(err, ErrInvalidResponse) {
+				t.Fatalf("expected ErrInvalidResponse, got: %v", err)
+			}
+		})
+	}
+}
+
+func TestDecodeBERIntegerErrorCases(t *testing.T) {
+	tests := []struct {
+		name string
+		data []byte
+	}{
+		{name: "empty", data: []byte{}},
+		{name: "too large", data: []byte{0x00, 0x00, 0x00, 0x00, 0x01}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := decodeBERInteger(tt.data)
+			if err == nil {
+				t.Fatal("expected error, got nil")
+			}
+		})
+	}
+}
+
+func buildLDAPExtendedResponse(messageID, resultCode int) []byte {
+	ldapResult := append(encodeBERTLV(0x0a, encodeBERIntegerValue(resultCode)), encodeBERTLV(0x04, []byte{})...)
+	ldapResult = append(ldapResult, encodeBERTLV(0x04, []byte{})...)
+	extendedResponse := encodeBERTLV(0x78, ldapResult)
+
+	return encodeBERTLV(0x30, append(encodeBERTLV(0x02, encodeBERIntegerValue(messageID)), extendedResponse...))
+}
+
+type failWriter struct {
+	err error
+}
+
+func (w *failWriter) Write(_ []byte) (int, error) {
+	return 0, w.err
+}
+
+func TestLDAPHandshakeWriteAndFlushErrors(t *testing.T) {
+	tests := []struct {
+		name        string
+		writerSize  int
+		errContains string
+	}{
+		{
+			name:        "write error",
+			writerSize:  1,
+			errContains: "failed to write StartTLS request",
+		},
+		{
+			name:        "flush error",
+			writerSize:  4096,
+			errContains: "failed to flush StartTLS request",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := newLDAPProtocol()
+			rw := bufio.NewReadWriter(
+				bufio.NewReader(bytes.NewReader(nil)),
+				bufio.NewWriterSize(&failWriter{err: errors.New("boom")}, tt.writerSize),
+			)
+
+			err := p.Handshake(context.Background(), rw)
+			if err == nil {
+				t.Fatal("expected error, got nil")
+			}
+
+			if !strings.Contains(err.Error(), tt.errContains) {
+				t.Fatalf("expected error containing %q, got: %v", tt.errContains, err)
+			}
+		})
+	}
+}
+
+func TestLDAPHandshakeMalformedResponse(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	clientConn, serverConn := net.Pipe()
+	defer clientConn.Close()
+	defer serverConn.Close()
+
+	serverErr := make(chan error, 1)
+
+	go func() {
+		defer close(serverErr)
+
+		reader := bufio.NewReader(serverConn)
+
+		_, _, err := readBERElement(reader)
+		if err != nil {
+			serverErr <- err
+			return
+		}
+
+		// Invalid LDAP message tag to trigger parse failure path in Handshake.
+		_, err = serverConn.Write(encodeBERTLV(0x31, []byte{}))
+		if err != nil {
+			serverErr <- err
+			return
+		}
+
+		serverErr <- nil
+	}()
+
+	err := StartTLS(ctx, clientConn, "389")
+	if err == nil {
+		t.Fatal("expected parse error, got nil")
+	}
+
+	if !strings.Contains(err.Error(), "failed to parse StartTLS response") {
+		t.Fatalf("expected parse failure prefix, got: %v", err)
+	}
+
+	err = <-serverErr
+	if err != nil {
+		t.Fatalf("server error: %v", err)
+	}
+}
+
+func TestParseLDAPMessageIDAndProtocolOpErrorCases(t *testing.T) {
+	tests := []struct {
+		name        string
+		payload     []byte
+		errContains string
+	}{
+		{
+			name: "invalid message id tag",
+			payload: append(
+				encodeBERTLV(0x04, []byte{0x01}),
+				encodeBERTLV(0x78, encodeBERTLV(0x0a, []byte{0x00}))...,
+			),
+			errContains: "expected messageID INTEGER",
+		},
+		{
+			name: "invalid message id value",
+			payload: append(
+				encodeBERTLV(0x02, []byte{}),
+				encodeBERTLV(0x78, encodeBERTLV(0x0a, []byte{0x00}))...,
+			),
+			errContains: "invalid messageID",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, _, _, err := parseLDAPMessageIDAndProtocolOp(tt.payload)
+			if err == nil {
+				t.Fatal("expected error, got nil")
+			}
+
+			if !strings.Contains(err.Error(), tt.errContains) {
+				t.Fatalf("expected error containing %q, got: %v", tt.errContains, err)
+			}
+		})
+	}
+}
+
+func TestValidateLDAPResultCodeErrorCases(t *testing.T) {
+	tests := []struct {
+		name        string
+		tag         byte
+		value       []byte
+		errContains string
+	}{
+		{
+			name:        "invalid protocol op tag",
+			tag:         0x77,
+			value:       []byte{},
+			errContains: "expected ExtendedResponse tag 0x78",
+		},
+		{
+			name:        "invalid result code tag",
+			tag:         0x78,
+			value:       encodeBERTLV(0x04, []byte{0x00}),
+			errContains: "expected resultCode ENUMERATED",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateLDAPResultCode(tt.tag, tt.value)
+			if err == nil {
+				t.Fatal("expected error, got nil")
+			}
+
+			if !strings.Contains(err.Error(), tt.errContains) {
+				t.Fatalf("expected error containing %q, got: %v", tt.errContains, err)
+			}
+		})
+	}
+}
+
+func TestMySQLParseHandshakePacketErrorCases(t *testing.T) {
+	p := newMySQLProtocol()
+
+	tests := []struct {
+		name        string
+		body        []byte
+		errContains string
+	}{
+		{
+			name:        "unsupported protocol version",
+			body:        []byte{0x09},
+			errContains: "unsupported protocol version",
+		},
+		{
+			name: "packet too short for capability flags",
+			// protocol version + empty server version + threadID + auth part + null + filler
+			body:        []byte{0x0a, 0x00, 0, 0, 0, 0, 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 0x00, 0x00},
+			errContains: "packet too short for capability flags",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := p.parseHandshakePacket(tt.body)
+			if err == nil {
+				t.Fatal("expected error, got nil")
+			}
+
+			if !strings.Contains(err.Error(), tt.errContains) {
+				t.Fatalf("expected error containing %q, got: %v", tt.errContains, err)
+			}
+		})
+	}
+}
+
+func TestMySQLReadPacketErrorCases(t *testing.T) {
+	p := newMySQLProtocol()
+
+	tests := []struct {
+		name        string
+		packet      []byte
+		errContains string
+	}{
+		{
+			name:        "short header",
+			packet:      []byte{0x01, 0x02},
+			errContains: "failed to read packet header",
+		},
+		{
+			name:        "short body",
+			packet:      []byte{0x04, 0x00, 0x00, 0x00, 0x01},
+			errContains: "failed to read packet body",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rw := bufio.NewReadWriter(bufio.NewReader(bytes.NewReader(tt.packet)), bufio.NewWriter(io.Discard))
+
+			_, err := p.readMySQLPacket(rw)
+			if err == nil {
+				t.Fatal("expected error, got nil")
+			}
+
+			if !strings.Contains(err.Error(), tt.errContains) {
+				t.Fatalf("expected error containing %q, got: %v", tt.errContains, err)
+			}
+		})
+	}
+}
+
+func TestProtocolNames(t *testing.T) {
+	tests := []struct {
+		name     string
+		protocol StartTLSProtocol
+		expected string
+	}{
+		{name: "smtp", protocol: newSMTPProtocol(), expected: "smtp"},
+		{name: "imap", protocol: newIMAPProtocol(), expected: "imap"},
+		{name: "pop3", protocol: newPOP3Protocol(), expected: "pop3"},
+		{name: "ftp", protocol: newFTPProtocol(), expected: "ftp"},
+		{name: ldapProtocolName, protocol: newLDAPProtocol(), expected: ldapProtocolName},
+		{name: mysqlProtocolName, protocol: newMySQLProtocol(), expected: mysqlProtocolName},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.protocol.Name(); got != tt.expected {
+				t.Fatalf("expected %q, got %q", tt.expected, got)
+			}
+		})
+	}
+}
+
+func TestEncodeBERLengthLongFormBranches(t *testing.T) {
+	tests := []struct {
+		name     string
+		length   int
+		expected []byte
+	}{
+		{name: "short form", length: 127, expected: []byte{0x7f}},
+		{name: "long form 1 byte", length: 128, expected: []byte{0x81, 0x80}},
+		{name: "long form 2 bytes", length: 256, expected: []byte{0x82, 0x01, 0x00}},
+		{name: "long form 3 bytes", length: 65536, expected: []byte{0x83, 0x01, 0x00, 0x00}},
+		{name: "long form 4 bytes", length: 16777216, expected: []byte{0x84, 0x01, 0x00, 0x00, 0x00}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := encodeBERLength(tt.length)
+			if !bytes.Equal(got, tt.expected) {
+				t.Fatalf("expected %x, got %x", tt.expected, got)
+			}
+		})
+	}
+}
+
+func TestSendStartTLSErrorCases(t *testing.T) {
+	tests := []struct {
+		name        string
+		writerSize  int
+		errContains string
+	}{
+		{name: "write error", writerSize: 1, errContains: "boom"},
+		{name: "flush error", writerSize: 4096, errContains: "boom"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rw := bufio.NewReadWriter(
+				bufio.NewReader(bytes.NewReader(nil)),
+				bufio.NewWriterSize(&failWriter{err: errors.New("boom")}, tt.writerSize),
+			)
+
+			err := sendStartTLS(context.Background(), rw, "STARTTLS\r\n", regexp.MustCompile("^220 "))
+			if err == nil {
+				t.Fatal("expected error, got nil")
+			}
+
+			if !strings.Contains(err.Error(), tt.errContains) {
+				t.Fatalf("expected error containing %q, got: %v", tt.errContains, err)
+			}
+		})
+	}
+}
+
+func TestExpectGreetingReadError(t *testing.T) {
+	rw := bufio.NewReadWriter(bufio.NewReader(bytes.NewReader(nil)), bufio.NewWriter(io.Discard))
+
+	err := expectGreeting(context.Background(), rw, regexp.MustCompile("^220 "))
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+}
+
+func TestReadBERElementErrorCases(t *testing.T) {
+	tests := []struct {
+		name        string
+		data        []byte
+		errContains string
+	}{
+		{name: "missing tag", data: []byte{}, errContains: "failed to read BER tag"},
+		{name: "incomplete value", data: []byte{0x04, 0x03, 0x01}, errContains: "failed to read BER value"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := bufio.NewReader(bytes.NewReader(tt.data))
+
+			_, _, err := readBERElement(r)
+			if err == nil {
+				t.Fatal("expected error, got nil")
+			}
+
+			if !strings.Contains(err.Error(), tt.errContains) {
+				t.Fatalf("expected error containing %q, got: %v", tt.errContains, err)
+			}
+		})
+	}
+}
+
+func TestParseBERElementErrorCases(t *testing.T) {
+	tests := []struct {
+		name        string
+		data        []byte
+		errContains string
+	}{
+		{name: "too short", data: []byte{0x04}, errContains: "BER element too short"},
+		{name: "missing length", data: []byte{0x04}, errContains: "BER element too short"},
+		{name: "length exceeds payload", data: []byte{0x04, 0x02, 0x01}, errContains: "BER element length exceeds payload"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, _, _, err := parseBERElement(tt.data)
+			if err == nil {
+				t.Fatal("expected error, got nil")
+			}
+
+			if !strings.Contains(err.Error(), tt.errContains) {
+				t.Fatalf("expected error containing %q, got: %v", tt.errContains, err)
+			}
+		})
 	}
 }

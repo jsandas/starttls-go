@@ -12,6 +12,9 @@ jobs:
   test:
     name: Integration Tests
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: integration_tests
     
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -24,9 +27,8 @@ jobs:
       - name: Run integration tests
         run: |
           set -e
-          cd integration_tests
-          bash setup.sh
+          bash setup.sh > /dev/null 2>&1
           trap 'docker compose -f docker-compose.yml down' EXIT
-          docker compose -f docker-compose.yml up -d
+          docker compose -f docker-compose.yml up --quiet-pull  -d
           sleep 15
           go test -v -tags=integration ./...

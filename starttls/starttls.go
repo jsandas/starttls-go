@@ -10,6 +10,7 @@ import (
 	"net"
 	"regexp"
 	"strings"
+	"sync/atomic"
 )
 
 // Protocol specific errors.
@@ -193,6 +194,371 @@ func (p *ftpProtocol) Name() string {
 	return p.name
 }
 
+// LDAP protocol implementation.
+type ldapProtocol struct {
+	name string
+}
+
+const ldapStartTLS_OID = "1.3.6.1.4.1.1466.20037"
+
+var ldapMessageIDCounter uint32
+
+const (
+	ldapProtocolName  = "ldap"
+	mysqlProtocolName = "mysql"
+)
+
+func newLDAPProtocol() *ldapProtocol {
+	return &ldapProtocol{
+		name: ldapProtocolName,
+	}
+}
+
+func (p *ldapProtocol) Handshake(ctx context.Context, rw *bufio.ReadWriter) error {
+	err := ctx.Err()
+	if err != nil {
+		return err
+	}
+
+	messageID := int(atomic.AddUint32(&ldapMessageIDCounter, 1))
+	request := encodeStartTLSRequest(messageID)
+
+	_, err = rw.Write(request)
+	if err != nil {
+		return fmt.Errorf("ldap: failed to write StartTLS request: %w", err)
+	}
+
+	err = rw.Flush()
+	if err != nil {
+		return fmt.Errorf("ldap: failed to flush StartTLS request: %w", err)
+	}
+
+	err = ctx.Err()
+	if err != nil {
+		return err
+	}
+
+	type ldapResp struct {
+		id  int
+		err error
+	}
+
+	respCh := make(chan ldapResp, 1)
+
+	go func() {
+		id, err := parseLDAPResponse(rw)
+		respCh <- ldapResp{id: id, err: err}
+	}()
+
+	var receivedID int
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case resp := <-respCh:
+		if resp.err != nil {
+			return fmt.Errorf("ldap: failed to parse StartTLS response: %w", resp.err)
+		}
+
+		receivedID = resp.id
+	}
+
+	if receivedID != messageID {
+		return fmt.Errorf("ldap: messageID mismatch: sent=%d received=%d", messageID, receivedID)
+	}
+
+	return nil
+}
+
+func encodeStartTLSRequest(messageID int) []byte {
+	messageIDField := encodeBERTLV(0x02, encodeBERIntegerValue(messageID))
+	// LDAP StartTLS ExtendedRequest uses [APPLICATION 23] (0x77) and
+	// requestName is context-specific [0] (0x80) carrying the OID value bytes.
+	requestNameField := encodeBERTLV(0x80, []byte(ldapStartTLS_OID))
+	protocolOpField := encodeBERTLV(0x77, requestNameField)
+
+	return encodeBERTLV(0x30, append(messageIDField, protocolOpField...))
+}
+
+func parseLDAPResponse(rw *bufio.ReadWriter) (int, error) {
+	tag, payload, err := readBERElement(rw.Reader)
+	if err != nil {
+		return 0, err
+	}
+
+	if tag != 0x30 {
+		return 0, fmt.Errorf("%w: expected LDAPMessage SEQUENCE, got tag 0x%02x", ErrInvalidResponse, tag)
+	}
+
+	messageID, protocolOpTag, protocolOpValue, err := parseLDAPMessageIDAndProtocolOp(payload)
+	if err != nil {
+		return 0, err
+	}
+
+	err = validateLDAPResultCode(protocolOpTag, protocolOpValue)
+	if err != nil {
+		return messageID, err
+	}
+
+	return messageID, nil
+}
+
+func parseLDAPMessageIDAndProtocolOp(payload []byte) (int, byte, []byte, error) {
+	messageIDTag, messageIDValue, rest, err := parseBERElement(payload)
+	if err != nil {
+		return 0, 0, nil, err
+	}
+
+	if messageIDTag != 0x02 {
+		return 0, 0, nil, fmt.Errorf("%w: expected messageID INTEGER, got tag 0x%02x", ErrInvalidResponse, messageIDTag)
+	}
+
+	messageID, err := decodeBERInteger(messageIDValue)
+	if err != nil {
+		return 0, 0, nil, fmt.Errorf("%w: invalid messageID: %w", ErrInvalidResponse, err)
+	}
+
+	protocolOpTag, protocolOpValue, _, err := parseBERElement(rest)
+	if err != nil {
+		return messageID, 0, nil, err
+	}
+
+	return messageID, protocolOpTag, protocolOpValue, nil
+}
+
+func validateLDAPResultCode(protocolOpTag byte, protocolOpValue []byte) error {
+	// StartTLS response uses ExtendedResponse [APPLICATION 24] (0x78).
+	if protocolOpTag != 0x78 {
+		return fmt.Errorf("%w: expected ExtendedResponse tag 0x78, got tag 0x%02x", ErrInvalidResponse, protocolOpTag)
+	}
+
+	resultCodeTag, resultCodeValue, _, err := parseBERElement(protocolOpValue)
+	if err != nil {
+		return err
+	}
+
+	if resultCodeTag != 0x0a && resultCodeTag != 0x02 {
+		return fmt.Errorf("%w: expected resultCode ENUMERATED, got tag 0x%02x", ErrInvalidResponse, resultCodeTag)
+	}
+
+	resultCode, err := decodeBERInteger(resultCodeValue)
+	if err != nil {
+		return fmt.Errorf("%w: invalid resultCode: %w", ErrInvalidResponse, err)
+	}
+
+	if resultCode != 0 {
+		return fmt.Errorf("ldap resultCode=%d", resultCode)
+	}
+
+	return nil
+}
+
+func encodeBERTLV(tag byte, value []byte) []byte {
+	length := encodeBERLength(len(value))
+	tlv := make([]byte, 1+len(length)+len(value))
+	tlv[0] = tag
+	copy(tlv[1:], length)
+	copy(tlv[1+len(length):], value)
+
+	return tlv
+}
+
+func encodeBERLength(length int) []byte {
+	if length < 0 {
+		panic("encodeBERLength: negative length")
+	}
+
+	if length < 0x80 {
+		return []byte{byte(length)}
+	}
+
+	var tmp [4]byte
+
+	pos := len(tmp)
+	for l := length; l > 0; l >>= 8 {
+		pos--
+		tmp[pos] = byte(l)
+	}
+
+	content := tmp[pos:]
+
+	result := make([]byte, 1+len(content))
+
+	if len(content) > 0x7f {
+		panic("encodeBERLength: length-of-length too large")
+	}
+
+	switch len(content) {
+	case 1:
+		result[0] = 0x81
+	case 2:
+		result[0] = 0x82
+	case 3:
+		result[0] = 0x83
+	case 4:
+		result[0] = 0x84
+	default:
+		panic("encodeBERLength: invalid length-of-length")
+	}
+
+	copy(result[1:], content)
+
+	return result
+}
+
+func encodeBERIntegerValue(n int) []byte {
+	if n == 0 {
+		return []byte{0x00}
+	}
+
+	var tmp [8]byte
+
+	i := len(tmp)
+
+	v := n
+	for v > 0 {
+		i--
+		tmp[i] = byte(v)
+		v >>= 8
+	}
+
+	value := append([]byte(nil), tmp[i:]...)
+	if value[0]&0x80 != 0 {
+		value = append([]byte{0x00}, value...)
+	}
+
+	return value
+}
+
+func readBERElement(r *bufio.Reader) (byte, []byte, error) {
+	tag, err := r.ReadByte()
+	if err != nil {
+		return 0, nil, fmt.Errorf("%w: failed to read BER tag: %v", ErrInvalidResponse, err)
+	}
+
+	length, err := readBERLength(r)
+	if err != nil {
+		return 0, nil, err
+	}
+
+	value := make([]byte, length)
+
+	_, err = io.ReadFull(r, value)
+	if err != nil {
+		return 0, nil, fmt.Errorf("%w: failed to read BER value: %v", ErrInvalidResponse, err)
+	}
+
+	return tag, value, nil
+}
+
+func readBERLength(r *bufio.Reader) (int, error) {
+	first, err := r.ReadByte()
+	if err != nil {
+		return 0, fmt.Errorf("%w: failed to read BER length: %v", ErrInvalidResponse, err)
+	}
+
+	if first&0x80 == 0 {
+		return int(first), nil
+	}
+
+	numBytes := int(first & 0x7f)
+	if numBytes == 0 {
+		return 0, fmt.Errorf("%w: BER indefinite length is not supported", ErrInvalidResponse)
+	}
+
+	if numBytes > 4 {
+		return 0, fmt.Errorf("%w: BER length too large", ErrInvalidResponse)
+	}
+
+	buf := make([]byte, numBytes)
+
+	_, err = io.ReadFull(r, buf)
+	if err != nil {
+		return 0, fmt.Errorf("%w: failed to read BER length bytes: %v", ErrInvalidResponse, err)
+	}
+
+	length := 0
+	for _, b := range buf {
+		length = (length << 8) | int(b)
+	}
+
+	return length, nil
+}
+
+func parseBERElement(data []byte) (byte, []byte, []byte, error) {
+	if len(data) < 2 {
+		return 0, nil, nil, fmt.Errorf("%w: BER element too short", ErrInvalidResponse)
+	}
+
+	tag := data[0]
+
+	length, lengthBytes, err := parseBERLength(data[1:])
+	if err != nil {
+		return 0, nil, nil, err
+	}
+
+	start := 1 + lengthBytes
+
+	end := start + length
+	if end > len(data) {
+		return 0, nil, nil, fmt.Errorf("%w: BER element length exceeds payload", ErrInvalidResponse)
+	}
+
+	return tag, data[start:end], data[end:], nil
+}
+
+func parseBERLength(data []byte) (int, int, error) {
+	if len(data) == 0 {
+		return 0, 0, fmt.Errorf("%w: missing BER length", ErrInvalidResponse)
+	}
+
+	first := data[0]
+	if first&0x80 == 0 {
+		return int(first), 1, nil
+	}
+
+	numBytes := int(first & 0x7f)
+	if numBytes == 0 {
+		return 0, 0, fmt.Errorf("%w: BER indefinite length is not supported", ErrInvalidResponse)
+	}
+
+	if numBytes > 4 {
+		return 0, 0, fmt.Errorf("%w: BER length too large", ErrInvalidResponse)
+	}
+
+	if len(data) < 1+numBytes {
+		return 0, 0, fmt.Errorf("%w: incomplete BER length", ErrInvalidResponse)
+	}
+
+	length := 0
+	for i := 0; i < numBytes; i++ {
+		length = (length << 8) | int(data[1+i])
+	}
+
+	return length, 1 + numBytes, nil
+}
+
+func decodeBERInteger(data []byte) (int, error) {
+	if len(data) == 0 {
+		return 0, fmt.Errorf("empty BER integer")
+	}
+
+	if len(data) > 4 {
+		return 0, fmt.Errorf("BER integer too large")
+	}
+
+	value := 0
+	for _, b := range data {
+		value = (value << 8) | int(b)
+	}
+
+	return value, nil
+}
+
+func (p *ldapProtocol) Name() string {
+	return p.name
+}
+
 // MySQL protocol implementation.
 type mysqlProtocol struct {
 	name string
@@ -200,7 +566,7 @@ type mysqlProtocol struct {
 
 func newMySQLProtocol() *mysqlProtocol {
 	return &mysqlProtocol{
-		name: "mysql",
+		name: mysqlProtocolName,
 	}
 }
 
@@ -399,6 +765,7 @@ var protocols = map[string]func() StartTLSProtocol{
 	"587":  func() StartTLSProtocol { return newSMTPProtocol() },
 	"110":  func() StartTLSProtocol { return newPOP3Protocol() },
 	"143":  func() StartTLSProtocol { return newIMAPProtocol() },
+	"389":  func() StartTLSProtocol { return newLDAPProtocol() },
 	"3306": func() StartTLSProtocol { return newMySQLProtocol() },
 }
 

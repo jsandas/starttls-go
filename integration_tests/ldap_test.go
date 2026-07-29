@@ -4,6 +4,7 @@ package integrationtests
 
 import (
 	"context"
+	"crypto/tls"
 	"net"
 	"os"
 	"testing"
@@ -21,9 +22,6 @@ func TestLDAPStartTLS(t *testing.T) {
 	}
 	if port == "" {
 		port = "389"
-	}
-	if port == "389" {
-		t.Skip("LDAP STARTTLS is not supported by starttls.StartTLS yet (port 389 is not in the protocol registry)")
 	}
 
 	addr := host + ":" + port
@@ -47,18 +45,18 @@ func TestLDAPStartTLS(t *testing.T) {
 
 	// attempting a TLS connection after StartTLS handshake fails which indicates that the
 	// StartTLS handshake was unsuccessful and needs to be reviewed.
-	// // Configure TLS
-	// tlsConfig := &tls.Config{
-	// 	ServerName:         "ldap.example.com",
-	// 	MinVersion:         tls.VersionTLS12,
-	// 	InsecureSkipVerify: true, // Set to true for testing purposes; in production, set to false and provide proper certificates
-	// }
+	// Configure TLS
+	tlsConfig := &tls.Config{
+		ServerName:         "ldap.example.com",
+		MinVersion:         tls.VersionTLS12,
+		InsecureSkipVerify: true, // Set to true for testing purposes; in production, set to false and provide proper certificates
+	}
 
-	// // Upgrade connection to TLS
-	// tlsConn := tls.Client(conn, tlsConfig)
-	// if err := tlsConn.Handshake(); err != nil {
-	// 	t.Fatalf("TLS handshake failed: %v", err)
-	// }
+	// Upgrade connection to TLS
+	tlsConn := tls.Client(conn, tlsConfig)
+	if err := tlsConn.Handshake(); err != nil {
+		t.Fatalf("TLS handshake failed: %v", err)
+	}
 
 	t.Log("Successfully completed LDAP StartTLS handshake")
 }

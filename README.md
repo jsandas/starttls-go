@@ -12,6 +12,7 @@ A Go module that handles STARTTLS negotiation for various protocols. STARTTLS al
 - IMAP (port 143)
 - POP3 (port 110)
 - FTP (port 21)
+- LDAP (port 389)
 - MySQL (port 3306)
 - Direct TLS ports (443, 465, 993, 995, 3389, 8443, 9443)
 
@@ -100,6 +101,11 @@ For more examples, see the [examples](./examples) directory.
 - Handles initial handshake packet
 - Checks SSL capability flags
 - Manages SSL request packet
+
+### LDAP
+- Sends StartTLS extended operation request
+- Uses BER encoding/decoding for request and response
+- Validates response message ID and result code
 
 ### Non-STARTTLS (unknown) ports
 - No-op for ports that are not in the STARTTLS protocol map (callers should establish TLS directly when required)
