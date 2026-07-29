@@ -27,7 +27,7 @@ jobs:
       - name: Run integration tests
         run: |
           set -e
-          bash setup.sh
+          bash setup.sh > /dev/null
           trap 'docker compose -f docker-compose.yml down' EXIT
           docker compose -f docker-compose.yml up --quiet-pull  -d
           sleep 15
