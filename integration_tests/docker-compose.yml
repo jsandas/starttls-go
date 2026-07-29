@@ -37,17 +37,17 @@ services:
     volumes:
       - ./openldap/certs:/etc/openldap/certs:ro
 
-  # # https://github.com/thkukuk/containers-mailserver/blob/master/postfix/README.md
-  # postfix:
-  #   image: registry.opensuse.org/opensuse/postfix
-  #   ports:
-  #     - "25:25"
-  #     - "587:587"
-  #   environment:
-  #     - SERVER_HOSTNAME=smtp.example.com
-  #     - ENABLE_SUBMISSION=1
-  #     - SMTPD_USE_TLS=1
-  #     - SMTPD_TLS_CRT=/etc/postfix/ssl/certs/tls.crt
-  #     - SMTPD_TLS_KEY=/etc/postfix/ssl/certs/tls.key
-  #   volumes:
-  #     - ./postfix/certs:/etc/postfix/ssl/certs:ro
+  # https://github.com/thkukuk/containers-mailserver/blob/master/postfix/README.md
+  postfix:
+    image: registry.opensuse.org/opensuse/postfix
+    ports:
+      - "25:25"
+      - "587:587"
+    environment:
+      - SERVER_HOSTNAME=smtp.example.com
+      - ENABLE_SUBMISSION=1
+      - SMTPD_USE_TLS=1
+      - SMTPD_TLS_CRT=/etc/postfix/ssl/certs/tls.crt
+      - SMTPD_TLS_KEY=/etc/postfix/ssl/certs/tls.key
+    volumes:
+      - ./postfix/certs:/etc/postfix/ssl/certs:ro
