@@ -12,6 +12,9 @@ jobs:
   test:
     name: Integration Tests
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: integration_tests
     
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -21,14 +24,45 @@ jobs:
           go-version-file: "go.mod"
           cache: true
 
-      - name: Run integration tests
+      - name: Prepare integration test assets
         run: |
           set -e
-          cd integration_tests
           bash setup.sh
-          ls -la
-          ls -la openldap/certs
-          trap 'docker compose -f docker-compose.yml down' EXIT
-          docker compose -f docker-compose.yml up --quiet-pull  -d
-          sleep 15
-          go test -v -tags=integration ./...
+
+      - name: Start OpenLDAP
+        run: docker compose -f docker-compose.yml up --quiet-pull -d openldap
+
+      - name: Run LDAP integration test
+        run: |
+          set -euo pipefail
+
+          for attempt in 1 2 3 4 5; do
+            if go test -v -tags=integration -run TestLDAPStartTLS ./...; then
+              exit 0
+            fi
+
+            echo "LDAP test attempt ${attempt} failed"
+            docker compose -f docker-compose.yml logs --tail=200 openldap || true
+
+            if [ "$attempt" -lt 5 ]; then
+              sleep 10
+            fi
+          done
+
+          exit 1
+
+      - name: Stop OpenLDAP
+        if: always()
+        run: docker compose -f docker-compose.yml down --remove-orphans
+
+      - name: Start Postfix
+        run: docker compose -f docker-compose.yml up --quiet-pull -d postfix
+
+      - name: Run SMTP integration test
+        run: |
+          set -euo pipefail
+          go test -v -tags=integration -run TestSMTPStartTLS ./...
+
+      - name: Stop Postfix
+        if: always()
+        run: docker compose -f docker-compose.yml down --remove-orphans
