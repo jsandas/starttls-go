@@ -26,8 +26,7 @@ jobs:
           set -e
           cd integration_tests
           bash setup.sh
-          trap 'docker compose -f docker-compose.yml down' EXIT
+          trap 'docker compose logs openldap && docker compose -f docker-compose.yml down' EXIT
           docker compose -f docker-compose.yml up -d
           sleep 30
           go test -v -tags=integration ./...
-          docker compose logs -f openldap
