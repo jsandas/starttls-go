@@ -24,45 +24,11 @@ jobs:
           go-version-file: "go.mod"
           cache: true
 
-      - name: Prepare integration test assets
+      - name: Run integration tests
         run: |
           set -e
           bash setup.sh
-
-      - name: Start OpenLDAP
-        run: docker compose -f docker-compose.yml up --quiet-pull -d openldap
-
-      - name: Run LDAP integration test
-        run: |
-          set -euo pipefail
-
-          for attempt in 1 2 3 4 5; do
-            if go test -v -tags=integration -run TestLDAPStartTLS ./...; then
-              exit 0
-            fi
-
-            echo "LDAP test attempt ${attempt} failed"
-            docker compose -f docker-compose.yml logs --tail=200 openldap || true
-
-            if [ "$attempt" -lt 5 ]; then
-              sleep 10
-            fi
-          done
-
-          exit 1
-
-      - name: Stop OpenLDAP
-        if: always()
-        run: docker compose -f docker-compose.yml down --remove-orphans
-
-      - name: Start Postfix
-        run: docker compose -f docker-compose.yml up --quiet-pull -d postfix
-
-      - name: Run SMTP integration test
-        run: |
-          set -euo pipefail
-          go test -v -tags=integration -run TestSMTPStartTLS ./...
-
-      - name: Stop Postfix
-        if: always()
-        run: docker compose -f docker-compose.yml down --remove-orphans
+          trap 'docker compose -f docker-compose.yml down' EXIT
+          docker compose -f docker-compose.yml up --quiet-pull  -d
+          sleep 15
+          go test -v -tags=integration ./...
