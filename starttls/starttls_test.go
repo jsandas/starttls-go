@@ -430,7 +430,12 @@ func TestLDAPHandshakeMessageIDMismatch(t *testing.T) {
 		defer close(serverErr)
 
 		reader := bufio.NewReader(serverConn)
-		_, payload, err := readBERElement(reader)
+
+		var payload []byte
+
+		var err error
+
+		_, payload, err = readBERElement(reader)
 		if err != nil {
 			serverErr <- err
 			return
@@ -444,8 +449,14 @@ func TestLDAPHandshakeMessageIDMismatch(t *testing.T) {
 
 		// Reply with a different message ID to trigger the mismatch branch.
 		response := buildLDAPExtendedResponse(messageID+1, 0)
+
 		_, err = serverConn.Write(response)
-		serverErr <- err
+		if err != nil {
+			serverErr <- err
+			return
+		}
+
+		serverErr <- nil
 	}()
 
 	err := StartTLS(ctx, clientConn, "389")
@@ -457,7 +468,8 @@ func TestLDAPHandshakeMessageIDMismatch(t *testing.T) {
 		t.Fatalf("expected messageID mismatch error, got: %v", err)
 	}
 
-	if err := <-serverErr; err != nil {
+	err = <-serverErr
+	if err != nil {
 		t.Fatalf("server error: %v", err)
 	}
 }
@@ -535,6 +547,7 @@ func TestReadBERLengthErrorCases(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			r := bufio.NewReader(bytes.NewReader(tt.data))
+
 			_, err := readBERLength(r)
 			if err == nil {
 				t.Fatal("expected error, got nil")
@@ -634,6 +647,7 @@ func TestLDAPHandshakeMalformedResponse(t *testing.T) {
 		defer close(serverErr)
 
 		reader := bufio.NewReader(serverConn)
+
 		_, _, err := readBERElement(reader)
 		if err != nil {
 			serverErr <- err
@@ -642,7 +656,12 @@ func TestLDAPHandshakeMalformedResponse(t *testing.T) {
 
 		// Invalid LDAP message tag to trigger parse failure path in Handshake.
 		_, err = serverConn.Write(encodeBERTLV(0x31, []byte{}))
-		serverErr <- err
+		if err != nil {
+			serverErr <- err
+			return
+		}
+
+		serverErr <- nil
 	}()
 
 	err := StartTLS(ctx, clientConn, "389")
@@ -654,7 +673,8 @@ func TestLDAPHandshakeMalformedResponse(t *testing.T) {
 		t.Fatalf("expected parse failure prefix, got: %v", err)
 	}
 
-	if err := <-serverErr; err != nil {
+	err = <-serverErr
+	if err != nil {
 		t.Fatalf("server error: %v", err)
 	}
 }
@@ -790,6 +810,7 @@ func TestMySQLReadPacketErrorCases(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			rw := bufio.NewReadWriter(bufio.NewReader(bytes.NewReader(tt.packet)), bufio.NewWriter(io.Discard))
+
 			_, err := p.readMySQLPacket(rw)
 			if err == nil {
 				t.Fatal("expected error, got nil")
@@ -812,8 +833,8 @@ func TestProtocolNames(t *testing.T) {
 		{name: "imap", protocol: newIMAPProtocol(), expected: "imap"},
 		{name: "pop3", protocol: newPOP3Protocol(), expected: "pop3"},
 		{name: "ftp", protocol: newFTPProtocol(), expected: "ftp"},
-		{name: "ldap", protocol: newLDAPProtocol(), expected: "ldap"},
-		{name: "mysql", protocol: newMySQLProtocol(), expected: "mysql"},
+		{name: ldapProtocolName, protocol: newLDAPProtocol(), expected: ldapProtocolName},
+		{name: mysqlProtocolName, protocol: newMySQLProtocol(), expected: mysqlProtocolName},
 	}
 
 	for _, tt := range tests {
@@ -879,6 +900,7 @@ func TestSendStartTLSErrorCases(t *testing.T) {
 
 func TestExpectGreetingReadError(t *testing.T) {
 	rw := bufio.NewReadWriter(bufio.NewReader(bytes.NewReader(nil)), bufio.NewWriter(io.Discard))
+
 	err := expectGreeting(context.Background(), rw, regexp.MustCompile("^220 "))
 	if err == nil {
 		t.Fatal("expected error, got nil")
@@ -898,6 +920,7 @@ func TestReadBERElementErrorCases(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			r := bufio.NewReader(bytes.NewReader(tt.data))
+
 			_, _, err := readBERElement(r)
 			if err == nil {
 				t.Fatal("expected error, got nil")

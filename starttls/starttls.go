@@ -203,9 +203,14 @@ const ldapStartTLS_OID = "1.3.6.1.4.1.1466.20037"
 
 var ldapMessageIDCounter uint32
 
+const (
+	ldapProtocolName  = "ldap"
+	mysqlProtocolName = "mysql"
+)
+
 func newLDAPProtocol() *ldapProtocol {
 	return &ldapProtocol{
-		name: "ldap",
+		name: ldapProtocolName,
 	}
 }
 
@@ -561,7 +566,7 @@ type mysqlProtocol struct {
 
 func newMySQLProtocol() *mysqlProtocol {
 	return &mysqlProtocol{
-		name: "mysql",
+		name: mysqlProtocolName,
 	}
 }
 
