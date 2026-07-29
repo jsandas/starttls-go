@@ -233,10 +233,26 @@ func (p *ldapProtocol) Handshake(ctx context.Context, rw *bufio.ReadWriter) erro
 		return err
 	}
 
-	receivedID, err := parseLDAPResponse(rw)
-	if err != nil {
-		return fmt.Errorf("ldap: failed to parse StartTLS response: %w", err)
+type ldapResp struct {
+	id  int
+	err error
+}
+respCh := make(chan ldapResp, 1)
+go func() {
+	id, err := parseLDAPResponse(rw)
+	respCh <- ldapResp{id: id, err: err}
+}()
+
+var receivedID int
+select {
+case <-ctx.Done():
+	return ctx.Err()
+case resp := <-respCh:
+	if resp.err != nil {
+		return fmt.Errorf("ldap: failed to parse StartTLS response: %w", resp.err)
 	}
+	receivedID = resp.id
+}
 
 	if receivedID != messageID {
 		return fmt.Errorf("ldap: messageID mismatch: sent=%d received=%d", messageID, receivedID)
