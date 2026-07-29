@@ -35,7 +35,7 @@ services:
       - LDAP_TLS_KEY=/etc/openldap/certs/tls.key
       - LDAP_TLS_CA_CRT=/etc/openldap/certs/tls.crt
     volumes:
-      - ./openldap/certs:/etc/openldap/certs:ro
+      - ./openldap/certs:/etc/openldap/certs
 
   # https://github.com/thkukuk/containers-mailserver/blob/master/postfix/README.md
   postfix:
@@ -50,4 +50,4 @@ services:
       - SMTPD_TLS_CRT=/etc/postfix/ssl/certs/tls.crt
       - SMTPD_TLS_KEY=/etc/postfix/ssl/certs/tls.key
     volumes:
-      - ./postfix/certs:/etc/postfix/ssl/certs:ro
+      - ./postfix/certs:/etc/postfix/ssl/certs
