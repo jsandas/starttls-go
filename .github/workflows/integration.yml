@@ -29,4 +29,5 @@ jobs:
           trap 'docker compose logs openldap && docker compose -f docker-compose.yml down' EXIT
           docker compose -f docker-compose.yml up -d
           sleep 30
+          timeout 5 telnet localhost 389
           go test -v -tags=integration ./...
