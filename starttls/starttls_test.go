@@ -29,6 +29,7 @@ var portMap = map[string]string{
 	"25":   "10025", // SMTP
 	"110":  "10110", // POP3
 	"143":  "10143", // IMAP
+	"389":  "10389", // LDAP
 	"3306": "13306", // MySQL
 }
 
@@ -65,8 +66,8 @@ func (s *testServer) start(ctx context.Context) {
 
 		reader := bufio.NewReader(conn)
 
-		// Send greeting
-		if len(s.messages) > 0 {
+		// Send greeting for text-based protocols
+		if len(s.messages) > 0 && s.port != "389" {
 			_, err := conn.Write([]byte(s.messages[0]))
 			if err != nil {
 				s.errors <- fmt.Errorf("failed to write greeting: %w", err)
@@ -75,21 +76,44 @@ func (s *testServer) start(ctx context.Context) {
 		}
 
 		// Read client messages and respond
-		for i := 1; i < len(s.messages); i++ {
-			// For MySQL, just read the SSL request packet and don't respond
-			if s.port == "3306" {
-				buf := make([]byte, 36) // Size of MySQL SSL request packet
+		switch s.port {
+		case "3306":
+			buf := make([]byte, 36) // Size of MySQL SSL request packet
 
-				_, err := io.ReadFull(reader, buf)
-				if err != nil && !errors.Is(err, io.EOF) {
-					s.errors <- fmt.Errorf("failed to read MySQL SSL request: %w", err)
-					return
-				}
+			_, err := io.ReadFull(reader, buf)
+			if err != nil && !errors.Is(err, io.EOF) {
+				s.errors <- fmt.Errorf("failed to read MySQL SSL request: %w", err)
+				return
+			}
 
-				s.received = append(s.received, string(buf))
+			s.received = append(s.received, string(buf))
+		case "389":
+			_, payload, err := readBERElement(reader)
+			if err != nil {
+				s.errors <- fmt.Errorf("failed to read LDAP request: %w", err)
+				return
+			}
 
-				break // MySQL doesn't expect a response after SSL request
-			} else {
+			s.received = append(s.received, fmt.Sprintf("ldap:%x", payload))
+
+			messageID, _, _, err := parseLDAPMessageIDAndProtocolOp(payload)
+			if err != nil {
+				s.errors <- fmt.Errorf("failed to decode LDAP messageID: %w", err)
+				return
+			}
+
+			ldapResult := append(encodeBERTLV(0x0a, []byte{0x00}), encodeBERTLV(0x04, []byte{})...)
+			ldapResult = append(ldapResult, encodeBERTLV(0x04, []byte{})...)
+			extendedResponse := encodeBERTLV(0x78, ldapResult)
+			response := encodeBERTLV(0x30, append(encodeBERTLV(0x02, encodeBERIntegerValue(messageID)), extendedResponse...))
+
+			_, err = conn.Write(response)
+			if err != nil {
+				s.errors <- fmt.Errorf("failed to write LDAP response: %w", err)
+				return
+			}
+		default:
+			for i := 1; i < len(s.messages); i++ {
 				// For text protocols, read until newline
 				msg, err := reader.ReadString('\n')
 				if err != nil && !errors.Is(err, io.EOF) {
@@ -201,6 +225,11 @@ func TestStartTLS(t *testing.T) {
 			expectError:   true,
 			expectedError: ErrStartTLSNotSupported,
 			timeout:       2 * time.Second,
+		},
+		{
+			name:    "ldap success",
+			port:    "389",
+			timeout: 2 * time.Second,
 		},
 		{
 			name: "mysql success",

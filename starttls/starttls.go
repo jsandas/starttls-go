@@ -233,26 +233,30 @@ func (p *ldapProtocol) Handshake(ctx context.Context, rw *bufio.ReadWriter) erro
 		return err
 	}
 
-type ldapResp struct {
-	id  int
-	err error
-}
-respCh := make(chan ldapResp, 1)
-go func() {
-	id, err := parseLDAPResponse(rw)
-	respCh <- ldapResp{id: id, err: err}
-}()
-
-var receivedID int
-select {
-case <-ctx.Done():
-	return ctx.Err()
-case resp := <-respCh:
-	if resp.err != nil {
-		return fmt.Errorf("ldap: failed to parse StartTLS response: %w", resp.err)
+	type ldapResp struct {
+		id  int
+		err error
 	}
-	receivedID = resp.id
-}
+
+	respCh := make(chan ldapResp, 1)
+
+	go func() {
+		id, err := parseLDAPResponse(rw)
+		respCh <- ldapResp{id: id, err: err}
+	}()
+
+	var receivedID int
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case resp := <-respCh:
+		if resp.err != nil {
+			return fmt.Errorf("ldap: failed to parse StartTLS response: %w", resp.err)
+		}
+
+		receivedID = resp.id
+	}
 
 	if receivedID != messageID {
 		return fmt.Errorf("ldap: messageID mismatch: sent=%d received=%d", messageID, receivedID)
@@ -281,12 +285,12 @@ func parseLDAPResponse(rw *bufio.ReadWriter) (int, error) {
 		return 0, fmt.Errorf("%w: expected LDAPMessage SEQUENCE, got tag 0x%02x", ErrInvalidResponse, tag)
 	}
 
-	messageID, protocolOpValue, err := parseLDAPMessageIDAndProtocolOp(payload)
+	messageID, protocolOpTag, protocolOpValue, err := parseLDAPMessageIDAndProtocolOp(payload)
 	if err != nil {
 		return 0, err
 	}
 
-	err = validateLDAPResultCode(protocolOpValue)
+	err = validateLDAPResultCode(protocolOpTag, protocolOpValue)
 	if err != nil {
 		return messageID, err
 	}
@@ -294,30 +298,35 @@ func parseLDAPResponse(rw *bufio.ReadWriter) (int, error) {
 	return messageID, nil
 }
 
-func parseLDAPMessageIDAndProtocolOp(payload []byte) (int, []byte, error) {
+func parseLDAPMessageIDAndProtocolOp(payload []byte) (int, byte, []byte, error) {
 	messageIDTag, messageIDValue, rest, err := parseBERElement(payload)
 	if err != nil {
-		return 0, nil, err
+		return 0, 0, nil, err
 	}
 
 	if messageIDTag != 0x02 {
-		return 0, nil, fmt.Errorf("%w: expected messageID INTEGER, got tag 0x%02x", ErrInvalidResponse, messageIDTag)
+		return 0, 0, nil, fmt.Errorf("%w: expected messageID INTEGER, got tag 0x%02x", ErrInvalidResponse, messageIDTag)
 	}
 
 	messageID, err := decodeBERInteger(messageIDValue)
 	if err != nil {
-		return 0, nil, fmt.Errorf("%w: invalid messageID: %w", ErrInvalidResponse, err)
+		return 0, 0, nil, fmt.Errorf("%w: invalid messageID: %w", ErrInvalidResponse, err)
 	}
 
-	_, protocolOpValue, _, err := parseBERElement(rest)
+	protocolOpTag, protocolOpValue, _, err := parseBERElement(rest)
 	if err != nil {
-		return messageID, nil, err
+		return messageID, 0, nil, err
 	}
 
-	return messageID, protocolOpValue, nil
+	return messageID, protocolOpTag, protocolOpValue, nil
 }
 
-func validateLDAPResultCode(protocolOpValue []byte) error {
+func validateLDAPResultCode(protocolOpTag byte, protocolOpValue []byte) error {
+	// StartTLS response uses ExtendedResponse [APPLICATION 24] (0x78).
+	if protocolOpTag != 0x78 {
+		return fmt.Errorf("%w: expected ExtendedResponse tag 0x78, got tag 0x%02x", ErrInvalidResponse, protocolOpTag)
+	}
+
 	resultCodeTag, resultCodeValue, _, err := parseBERElement(protocolOpValue)
 	if err != nil {
 		return err
