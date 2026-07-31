@@ -49,11 +49,15 @@ openssl req -x509 -newkey rsa:2048 \
 
 cp mysql/certs/server-cert.pem mysql/certs/ca.pem
 
+# Generate FTP cert+key bundle for Pure-FTPd (expects combined PEM)
 openssl req -x509 -newkey rsa:2048 \
     -days 3650 -nodes \
     -subj "/C=US/ST=Denial/L=Springfield/O=Dis/CN=localhost" \
-    -keyout ftp/certs/pure-ftpd.pem \
-    -out ftp/certs/pure-ftpd.pem
+    -keyout ftp/certs/pure-ftpd.key \
+    -out ftp/certs/pure-ftpd.crt
+
+cat ftp/certs/pure-ftpd.key ftp/certs/pure-ftpd.crt > ftp/certs/pure-ftpd.pem
+rm -f ftp/certs/pure-ftpd.key ftp/certs/pure-ftpd.crt
 
 # Download DH parameters if they don't exist (or just overwrite for simplicity in test environment)
 echo "Setting up DH parameters for Dovecot and OpenLDAP..."
