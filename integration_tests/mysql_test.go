@@ -1,4 +1,3 @@
-package integrationtests
 //go:build integration
 
 package integrationtests

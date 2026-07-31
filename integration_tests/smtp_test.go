@@ -45,7 +45,7 @@ func TestSMTPStartTLS(t *testing.T) {
 
 	// Configure TLS
 	tlsConfig := &tls.Config{
-		ServerName:         "smtp.example.com",
+		ServerName:         "mail.example.com",
 		MinVersion:         tls.VersionTLS12,
 		InsecureSkipVerify: true, // Set to true for testing purposes; in production, set to false and provide proper certificates
 	}

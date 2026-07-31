@@ -1,23 +1,24 @@
 services:
-  # https://github.com/thkukuk/containers-mailserver/blob/master/dovecot/README.md
-  # dovecot:
-  #   image: registry.opensuse.org/opensuse/dovecot
-  #   ports:
-  #     - "110:110"
-  #     - "143:143"
-  #     # - "993:993"
-  #     # - "995:995"
-  #   environment:
-  #     # - DEBUG=1
-  #     - DOVECOT_TLS=1
-  #     - DOVECOT_TLS_CRT=/etc/certs/tls.crt
-  #     - DOVECOT_TLS_KEY=/etc/certs/tls.key
-  #     - DOVECOT_TLS_DH_PARAM=/etc/certs/dhparam.pem
-  #     - ENABLE_IMAP=1
-  #     - ENABLE_POP3=1
-  #   # volumes:
-  #   #   - ./dovecot/certs:/etc/certs:ro
-  #   #   - ./dovecot/conf:/etc/dovecot:rw
+  mailserver:
+    image: mailserver/docker-mailserver:edge
+    hostname: mail.example.com
+    ports:
+      - "110:110"
+      - "143:143"
+    environment:
+      - ENABLE_POP3=1
+      - ENABLE_IMAP=1
+      - ENABLE_SMTPS=1
+      - SSL_TYPE=manual
+      - SSL_CERT_PATH=/tmp/ssl/tls.crt
+      - SSL_KEY_PATH=/tmp/ssl/tls.key
+      - OVERRIDE_HOSTNAME=mail.example.com
+      - PERMIT_DOCKER=host
+    volumes:
+      - ./mailserver/config:/tmp/docker-mailserver
+      - ./mailserver/certs/tls.crt:/tmp/ssl:ro
+    cap_add:
+      - NET_ADMIN
 
   #  https://github.com/thkukuk/containers-mailserver/blob/master/openldap/README.md
   openldap:
@@ -36,21 +37,6 @@ services:
       - LDAP_TLS_CA_CRT=/etc/openldap/certs/tls.crt
     volumes:
       - ./openldap/certs:/etc/openldap/certs
-
-  # https://github.com/thkukuk/containers-mailserver/blob/master/postfix/README.md
-  postfix:
-    image: registry.opensuse.org/opensuse/postfix
-    ports:
-      - "25:25"
-      - "587:587"
-    environment:
-      - SERVER_HOSTNAME=smtp.example.com
-      - ENABLE_SUBMISSION=1
-      - SMTPD_USE_TLS=1
-      - SMTPD_TLS_CRT=/etc/postfix/ssl/certs/tls.crt
-      - SMTPD_TLS_KEY=/etc/postfix/ssl/certs/tls.key
-    volumes:
-      - ./postfix/certs:/etc/postfix/ssl/certs
 
   mysql:
     image: mysql:8.0
