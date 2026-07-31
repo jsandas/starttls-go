@@ -13,6 +13,8 @@ fi
 mkdir -p dovecot/certs
 mkdir -p openldap/certs
 mkdir -p postfix/certs
+mkdir -p mysql/certs
+mkdir -p ftp/certs
 
 # Generate certificates if they don't exist (or just overwrite for simplicity in test environment)
 echo "Generating certificates..."
@@ -34,6 +36,20 @@ openssl req -x509 -newkey rsa:2048 \
     -subj "/C=US/ST=Denial/L=Springfield/O=Dis/CN=smtp.example.com" \
     -keyout postfix/certs/tls.key \
     -out postfix/certs/tls.crt
+
+openssl req -x509 -newkey rsa:2048 \
+    -days 3650 -nodes \
+    -subj "/C=US/ST=Denial/L=Springfield/O=Dis/CN=localhost" \
+    -keyout mysql/certs/server-key.pem \
+    -out mysql/certs/server-cert.pem
+
+cp mysql/certs/server-cert.pem mysql/certs/ca.pem
+
+openssl req -x509 -newkey rsa:2048 \
+    -days 3650 -nodes \
+    -subj "/C=US/ST=Denial/L=Springfield/O=Dis/CN=localhost" \
+    -keyout ftp/certs/pure-ftpd.pem \
+    -out ftp/certs/pure-ftpd.pem
 
 # Download DH parameters if they don't exist (or just overwrite for simplicity in test environment)
 echo "Setting up DH parameters for Dovecot and OpenLDAP..."

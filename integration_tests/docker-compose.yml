@@ -51,3 +51,31 @@ services:
       - SMTPD_TLS_KEY=/etc/postfix/ssl/certs/tls.key
     volumes:
       - ./postfix/certs:/etc/postfix/ssl/certs
+
+  mysql:
+    image: mysql:8.0
+    ports:
+      - "3306:3306"
+    environment:
+      - MYSQL_ROOT_PASSWORD=rootpass
+      - MYSQL_DATABASE=testdb
+    command:
+      - --ssl-ca=/etc/mysql/certs/ca.pem
+      - --ssl-cert=/etc/mysql/certs/server-cert.pem
+      - --ssl-key=/etc/mysql/certs/server-key.pem
+      - --tls-version=TLSv1.2
+    volumes:
+      - ./mysql/certs:/etc/mysql/certs:ro
+
+  ftp:
+    image: stilliard/pure-ftpd:latest
+    ports:
+      - "21:21"
+    environment:
+      - PUBLICHOST=localhost
+      - FTP_USER_NAME=admin
+      - FTP_USER_PASS=admin
+      - FTP_USER_HOME=/home/admin
+      - ADDED_FLAGS=--tls=2
+    volumes:
+      - ./ftp/certs:/etc/ssl/private:ro
