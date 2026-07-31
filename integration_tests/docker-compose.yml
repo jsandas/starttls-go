@@ -3,8 +3,10 @@ services:
     image: mailserver/docker-mailserver:edge
     hostname: mail.example.com
     ports:
+      - "25:25"
       - "110:110"
       - "143:143"
+      - "587:587"
     environment:
       - ENABLE_POP3=1
       - ENABLE_IMAP=1
@@ -14,9 +16,10 @@ services:
       - SSL_KEY_PATH=/tmp/ssl/tls.key
       - OVERRIDE_HOSTNAME=mail.example.com
       - PERMIT_DOCKER=host
+      - ENABLE_UPDATE_CHECK=0
     volumes:
       - ./mailserver/config:/tmp/docker-mailserver
-      - ./mailserver/certs/tls.crt:/tmp/ssl:ro
+      - ./mailserver/certs:/tmp/ssl:ro
     cap_add:
       - NET_ADMIN
 
