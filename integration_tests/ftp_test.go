@@ -13,15 +13,15 @@ import (
 	"github.com/jsandas/starttls-go/starttls"
 )
 
-func TestPOP3StartTLS(t *testing.T) {
-	host := os.Getenv("POP3_HOST")
-	port := os.Getenv("POP3_PORT")
+func TestFTPStartTLS(t *testing.T) {
+	host := os.Getenv("FTP_HOST")
+	port := os.Getenv("FTP_PORT")
 
 	if host == "" {
 		host = "localhost"
 	}
 	if port == "" {
-		port = "110"
+		port = "21"
 	}
 
 	addr := host + ":" + port
@@ -43,7 +43,7 @@ func TestPOP3StartTLS(t *testing.T) {
 	}
 
 	tlsConfig := &tls.Config{
-		ServerName:         "mail.example.com",
+		ServerName:         "localhost",
 		MinVersion:         tls.VersionTLS12,
 		InsecureSkipVerify: true,
 	}
@@ -53,5 +53,5 @@ func TestPOP3StartTLS(t *testing.T) {
 		t.Fatalf("TLS handshake failed: %v", err)
 	}
 
-	t.Log("Successfully completed POP3 StartTLS handshake")
+	t.Log("Successfully completed FTP StartTLS handshake")
 }

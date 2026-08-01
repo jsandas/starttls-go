@@ -13,7 +13,7 @@ import (
 	"github.com/jsandas/starttls-go/starttls"
 )
 
-func TestSMTPStartTLS(t *testing.T) {
+func TestSMTPStartTLS587(t *testing.T) {
 	host := os.Getenv("SMTP_HOST")
 	port := os.Getenv("SMTP_PORT")
 
@@ -21,7 +21,7 @@ func TestSMTPStartTLS(t *testing.T) {
 		host = "localhost"
 	}
 	if port == "" {
-		port = "25"
+		port = "587"
 	}
 
 	addr := host + ":" + port
@@ -45,7 +45,7 @@ func TestSMTPStartTLS(t *testing.T) {
 
 	// Configure TLS
 	tlsConfig := &tls.Config{
-		ServerName:         "smtp.example.com",
+		ServerName:         "mail.example.com",
 		MinVersion:         tls.VersionTLS12,
 		InsecureSkipVerify: true, // Set to true for testing purposes; in production, set to false and provide proper certificates
 	}
