@@ -24,11 +24,20 @@ jobs:
           go-version-file: "go.mod"
           cache: true
 
-      - name: Run integration tests
+      - name: Set up environment
         run: |
           set -e
           bash setup.sh 2> /dev/null
-          trap 'docker compose -f docker-compose.yml down' EXIT
+
+      - name: Run integration tests
+        run: |
+          set -e
           docker compose -f docker-compose.yml up --quiet-pull  -d
           sleep 30
           go test -v -tags=integration ./...
+
+      - name: Tear down environment
+        if: always()
+        run: |
+          set -e
+          docker compose -f docker-compose.yml down
