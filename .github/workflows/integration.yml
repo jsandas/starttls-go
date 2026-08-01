@@ -27,9 +27,8 @@ jobs:
       - name: Run integration tests
         run: |
           set -e
-          bash setup.sh > /dev/null 2>&1
+          bash setup.sh
           trap 'docker compose -f docker-compose.yml down' EXIT
           docker compose -f docker-compose.yml up --quiet-pull  -d
           sleep 30
-          docker compose logs mysql
           go test -v -tags=integration ./...
