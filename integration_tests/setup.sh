@@ -50,6 +50,7 @@ openssl req -x509 -newkey rsa:2048 \
 cp mysql/certs/server-cert.pem mysql/certs/ca.pem
 
 if [ "$(uname)" = "Linux" ]; then
+    echo "Changing ownership of MySQL certs to UID 999 and GID 999 for Linux..."
     sudo chown -R 999:999 mysql/certs
 fi
 
