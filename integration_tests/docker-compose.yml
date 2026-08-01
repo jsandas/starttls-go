@@ -1,6 +1,6 @@
 services:
   mailserver:
-    image: mailserver/docker-mailserver:edge
+    image: mailserver/docker-mailserver:15.1.0
     hostname: mail.example.com
     ports:
       - "25:25"
@@ -57,7 +57,7 @@ services:
       - ./mysql/certs:/etc/mysql/certs:ro
 
   ftp:
-    image: stilliard/pure-ftpd:latest
+    image: stilliard/pure-ftpd:bookworm-1.0.50
     ports:
       - "21:21"
     environment:
