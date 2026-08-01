@@ -48,7 +48,10 @@ openssl req -x509 -newkey rsa:2048 \
     -out mysql/certs/server-cert.pem
 
 cp mysql/certs/server-cert.pem mysql/certs/ca.pem
-chown -R 999:999 mysql/certs
+
+if [ "$(uname)" = "Linux" ]; then
+    sudo chown -R 999:999 mysql/certs
+fi
 
 # Generate FTP cert+key bundle for Pure-FTPd (expects combined PEM)
 openssl req -x509 -newkey rsa:2048 \
