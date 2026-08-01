@@ -48,6 +48,7 @@ openssl req -x509 -newkey rsa:2048 \
     -out mysql/certs/server-cert.pem
 
 cp mysql/certs/server-cert.pem mysql/certs/ca.pem
+chown -R 999:999 mysql/certs
 
 # Generate FTP cert+key bundle for Pure-FTPd (expects combined PEM)
 openssl req -x509 -newkey rsa:2048 \
@@ -60,17 +61,13 @@ cat ftp/certs/pure-ftpd.key ftp/certs/pure-ftpd.crt > ftp/certs/pure-ftpd.pem
 rm -f ftp/certs/pure-ftpd.key ftp/certs/pure-ftpd.crt
 
 # Download DH parameters if they don't exist (or just overwrite for simplicity in test environment)
-echo "Setting up DH parameters for Dovecot and OpenLDAP..."
+echo "Setting up DH parameters for OpenLDAP..."
 if [ ! -f "dhparam.pem" ]; then
     echo "DH parameters do not exist. Downloading..."
     curl -fsSL https://ssl-config.mozilla.org/ffdhe2048.txt -o dhparam.pem
-
-    # cp dhparam.pem mailserver/certs/dhparam.pem
     cp dhparam.pem openldap/certs/dhparam.pem
 else  
     echo "DH parameters already exist. Overwriting..."
-
-    # cp dhparam.pem mailserver/certs/dhparam.pem
     cp dhparam.pem openldap/certs/dhparam.pem
 fi
 
