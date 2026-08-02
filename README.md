@@ -3,6 +3,7 @@
 [![Integration Tests](https://github.com/jsandas/starttls-go/actions/workflows/integration.yml/badge.svg)](https://github.com/jsandas/starttls-go/actions/workflows/integration.yml)
 [![Code Tests](https://github.com/jsandas/starttls-go/actions/workflows/code.yml/badge.svg)](https://github.com/jsandas/starttls-go/actions/workflows/code.yml)
 [![Quality Checks](https://github.com/jsandas/starttls-go/actions/workflows/quality.yml/badge.svg)](https://github.com/jsandas/starttls-go/actions/workflows/quality.yml)
+[![CodeCov](https://codecov.io/gh/jsandas/starttls-go/graph/badge.svg?token=S2805SVWX4)](https://codecov.io/gh/jsandas/starttls-go)
 [![GoDoc](https://godoc.org/github.com/jsandas/starttls-go?status.svg)](https://godoc.org/github.com/jsandas/starttls-go)
 
 A Go module that handles STARTTLS (a.k.a. opportunistic TLS) negotiation for various protocols. STARTTLS allows upgrading a plain text connection to use TLS encryption after the initial connection is established. This module performs a no-op for any ports not in the STARTTLS protocol map, making it safe to use even if the destination server uses implicit TLS (e.g., HTTPS, LDAPS, etc.).
