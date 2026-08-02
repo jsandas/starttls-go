@@ -1,4 +1,4 @@
-name: Integration Tests
+name: Integration
 
 on:
   push:
@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   test:
-    name: Integration Tests
+    name: Protocol Integration Tests 
     runs-on: ubuntu-latest
     defaults:
       run:
