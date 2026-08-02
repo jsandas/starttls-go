@@ -3,11 +3,12 @@
 [![Integration Tests](https://github.com/jsandas/starttls-go/actions/workflows/integration.yml/badge.svg)](https://github.com/jsandas/starttls-go/actions/workflows/integration.yml)
 [![Code Tests](https://github.com/jsandas/starttls-go/actions/workflows/code.yml/badge.svg)](https://github.com/jsandas/starttls-go/actions/workflows/code.yml)
 [![Quality Checks](https://github.com/jsandas/starttls-go/actions/workflows/quality.yml/badge.svg)](https://github.com/jsandas/starttls-go/actions/workflows/quality.yml)
+[![CodeCov](https://codecov.io/gh/jsandas/starttls-go/graph/badge.svg?token=S2805SVWX4)](https://codecov.io/gh/jsandas/starttls-go)
 [![GoDoc](https://godoc.org/github.com/jsandas/starttls-go?status.svg)](https://godoc.org/github.com/jsandas/starttls-go)
 
-A Go module that handles STARTTLS negotiation for various protocols. STARTTLS allows upgrading a plain text connection to use TLS encryption after the initial connection is established.
+A Go module that handles STARTTLS (a.k.a. opportunistic TLS) negotiation for various protocols. STARTTLS allows upgrading a plain text connection to use TLS encryption after the initial connection is established. This module performs a no-op for any ports not in the STARTTLS protocol map, making it safe to use even if the destination server uses implicit TLS (e.g., HTTPS, LDAPS, etc.).
 
-## Supported Protocols
+## Implemented Protocols
 
 - SMTP (ports 25, 587)
 - IMAP (port 143)
@@ -15,7 +16,6 @@ A Go module that handles STARTTLS negotiation for various protocols. STARTTLS al
 - FTP (port 21)
 - LDAP (port 389)
 - MySQL (port 3306)
-- Direct TLS ports (443, 465, 993, 995, 3389, 8443, 9443)
 
 ## Installation
 
@@ -108,8 +108,6 @@ For more examples, see the [examples](./examples) directory.
 - Uses BER encoding/decoding for request and response
 - Validates response message ID and result code
 
-### Non-STARTTLS (unknown) ports
-- No-op for ports that are not in the STARTTLS protocol map (callers should establish TLS directly when required)
 ## Error Handling
 
 The module provides specific error types:
