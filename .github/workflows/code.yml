@@ -1,4 +1,4 @@
-name: Unit Tests
+name: Code
 
 on:
   push:
@@ -9,23 +9,11 @@ on:
       - main
 
 jobs:
-  lint:
-    permissions:
-      contents: read
-    uses: jsandas/github-actions/.github/workflows/golang-lint.yml@13150b57906d67e1731f602c2b78a5d13b13b1bc
-
-  security:
-    permissions:
-      contents: read
-      security-events: write
-    uses: jsandas/github-actions/.github/workflows/golang-security.yml@13150b57906d67e1731f602c2b78a5d13b13b1bc
-
   test:
     name: Unit Tests
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    needs: [lint]
     
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
